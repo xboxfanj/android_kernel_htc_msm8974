@@ -682,7 +682,8 @@ static void __cpuinit smp_fork_idle(struct work_struct *work)
 	complete(&c_idle->done);
 }
 
-int __cpuinit __cpu_up(unsigned int cpu)
+/* Upping and downing of CPUs */
+int __cpuinit __cpu_up(unsigned int cpu, struct task_struct *tidle)
 {
 	struct create_idle c_idle;
 	struct pcpu *pcpu;

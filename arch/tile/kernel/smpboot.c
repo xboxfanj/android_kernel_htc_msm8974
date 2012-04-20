@@ -175,7 +175,7 @@ void __cpuinit online_secondary(void)
 	cpu_idle();
 }
 
-int __cpuinit __cpu_up(unsigned int cpu)
+int __cpuinit __cpu_up(unsigned int cpu, struct task_struct *tidle)
 {
 	
 	static int timeout;

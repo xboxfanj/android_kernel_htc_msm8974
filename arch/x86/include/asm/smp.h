@@ -57,6 +57,8 @@ DECLARE_EARLY_PER_CPU(int, x86_cpu_to_logical_apicid);
 
 extern unsigned long stack_start; 
 
+struct task_struct;
+
 struct smp_ops {
 	void (*smp_prepare_boot_cpu)(void);
 	void (*smp_prepare_cpus)(unsigned max_cpus);
@@ -107,7 +109,7 @@ static inline void smp_cpus_done(unsigned int max_cpus)
 	smp_ops.smp_cpus_done(max_cpus);
 }
 
-static inline int __cpu_up(unsigned int cpu)
+static inline int __cpu_up(unsigned int cpu, struct task_struct *tidle)
 {
 	return smp_ops.cpu_up(cpu);
 }
