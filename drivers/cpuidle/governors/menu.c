@@ -153,13 +153,14 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 	detect_repeating_patterns(data);
 
 	if (data->expected_us > 5 &&
-		drv->states[CPUIDLE_DRIVER_STATE_START].disable == 0)
+		dev->states_usage[CPUIDLE_DRIVER_STATE_START].disable == 0)
 		data->last_state_idx = CPUIDLE_DRIVER_STATE_START;
 
 	for (i = CPUIDLE_DRIVER_STATE_START; i < drv->state_count; i++) {
 		struct cpuidle_state *s = &drv->states[i];
+		struct cpuidle_state_usage *su = &dev->states_usage[i];
 
-		if (s->disable)
+		if (su->disable)
 			continue;
 		if (s->target_residency > data->predicted_us)
 			continue;
