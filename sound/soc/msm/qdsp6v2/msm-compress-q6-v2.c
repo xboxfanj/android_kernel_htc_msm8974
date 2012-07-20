@@ -142,6 +142,8 @@ struct msm_compr_audio {
 	uint64_t lasttimestamp;
 	int32_t stream_end;
 
+	uint16_t bits_per_sample;
+
 	uint32_t sample_rate;
 	uint32_t num_channels;
 
@@ -670,6 +672,8 @@ static int msm_compr_configure_dsp(struct snd_compr_stream *cstream)
                bits_per_sample = 24;
        }
        prtd->bits_per_sample = bits_per_sample;
+
+	prtd->bits_per_sample = bits_per_sample;
 
 	pr_debug("%s: stream_id %d\n", __func__, ac->stream_id);
 
