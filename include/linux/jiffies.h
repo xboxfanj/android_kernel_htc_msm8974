@@ -32,12 +32,27 @@
 # error Invalid value of HZ.
 #endif
 
-#define LATCH  ((CLOCK_TICK_RATE + HZ/2) / HZ)	
-
+/* Suppose we want to divide two numbers NOM and DEN: NOM/DEN, then we can
+ * improve accuracy by shifting LSH bits, hence calculating:
+ *     (NOM << LSH) / DEN
+ * This however means trouble for large NOM, because (NOM << LSH) may no
+ * longer fit in 32 bits. The following way of calculating this gives us
+ * some slack, under the following conditions:
+ *   - (NOM / DEN) fits in (32 - LSH) bits.
+ *   - (NOM % DEN) fits in (32 - LSH) bits.
+ */
 #define SH_DIV(NOM,DEN,LSH) (   (((NOM) / (DEN)) << (LSH))              \
                              + ((((NOM) % (DEN)) << (LSH)) + (DEN) / 2) / (DEN))
 
-#define ACTHZ (SH_DIV (CLOCK_TICK_RATE, LATCH, 8))
+#ifdef CLOCK_TICK_RATE
+/* LATCH is used in the interval timer and ftape setup. */
+# define LATCH ((CLOCK_TICK_RATE + HZ/2) / HZ)	/* For divider */
+
+/* HZ is the requested value. ACTHZ is actual HZ ("<< 8" is for accuracy) */
+# define ACTHZ (SH_DIV(CLOCK_TICK_RATE, LATCH, 8))
+#else
+# define ACTHZ (HZ << 8)
+#endif
 
 #define TICK_NSEC (SH_DIV (1000000UL * 1000, ACTHZ, 8))
 
