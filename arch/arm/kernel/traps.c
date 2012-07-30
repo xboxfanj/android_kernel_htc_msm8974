@@ -368,12 +368,9 @@ static int call_undef_hook(struct pt_regs *regs, unsigned int instr)
 
 asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 {
-	unsigned int correction = thumb_mode(regs) ? 2 : 4;
 	unsigned int instr;
 	siginfo_t info;
 	void __user *pc;
-
-	regs->ARM_pc -= correction;
 
 	pc = (void __user *)instruction_pointer(regs);
 
