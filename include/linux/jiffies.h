@@ -44,17 +44,10 @@
 #define SH_DIV(NOM,DEN,LSH) (   (((NOM) / (DEN)) << (LSH))              \
                              + ((((NOM) % (DEN)) << (LSH)) + (DEN) / 2) / (DEN))
 
-#ifdef CLOCK_TICK_RATE
-/* LATCH is used in the interval timer and ftape setup. */
-# define LATCH ((CLOCK_TICK_RATE + HZ/2) / HZ)	/* For divider */
+extern int register_refined_jiffies(long clock_tick_rate);
 
-/* HZ is the requested value. ACTHZ is actual HZ ("<< 8" is for accuracy) */
-# define ACTHZ (SH_DIV(CLOCK_TICK_RATE, LATCH, 8))
-#else
-# define ACTHZ (HZ << 8)
-#endif
-
-#define TICK_NSEC (SH_DIV (1000000UL * 1000, ACTHZ, 8))
+/* TICK_NSEC is the time between ticks in nsec assuming SHIFTED_HZ */
+#define TICK_NSEC ((NSEC_PER_SEC+HZ/2)/HZ)
 
 #define TICK_USEC ((1000000UL + USER_HZ/2) / USER_HZ)
 
