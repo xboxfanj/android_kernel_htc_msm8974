@@ -168,6 +168,10 @@ struct dev_pm_qos {
 	struct pm_qos_constraints latency;
 };
 
+struct dev_pm_qos {
+	struct pm_qos_constraints latency;
+};
+
 /* Action requested to pm_qos_update_target */
 enum pm_qos_req_action {
 	PM_QOS_ADD_REQ,		

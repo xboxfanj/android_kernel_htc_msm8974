@@ -229,8 +229,8 @@ struct dev_pm_info {
 	s64			max_time_suspended_ns;
 	struct dev_pm_qos_request *pq_req;
 #endif
-	struct pm_subsys_data	*subsys_data;  
-	struct pm_qos_constraints *constraints;
+	struct pm_subsys_data	*subsys_data;  /* Owned by the subsystem. */
+	struct dev_pm_qos	*qos;
 };
 
 extern void update_pm_runtime_accounting(struct device *dev);
