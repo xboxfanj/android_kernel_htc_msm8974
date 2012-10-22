@@ -29,6 +29,11 @@ struct pm_qos_request {
 	struct delayed_work work; 
 };
 
+struct pm_qos_flags_request {
+	struct list_head node;
+	s32 flags;	/* Do not change to 64 bit */
+};
+
 struct dev_pm_qos_request {
 	struct plist_node node;
 	struct device *dev;
@@ -40,6 +45,11 @@ enum pm_qos_type {
 	PM_QOS_MIN		
 };
 
+/*
+ * Note: The lockless read path depends on the CPU accessing target_value
+ * or effective_flags atomically.  Atomic access is only guaranteed on all CPU
+ * types linux supports for 32 bit quantites
+ */
 struct pm_qos_constraints {
 	struct plist_head list;
 	s32 target_value;	
@@ -48,6 +58,16 @@ struct pm_qos_constraints {
 	struct blocking_notifier_head *notifiers;
 };
 
+struct pm_qos_flags {
+	struct list_head list;
+	s32 effective_flags;	/* Do not change to 64 bit */
+};
+
+struct dev_pm_qos {
+	struct pm_qos_constraints latency;
+};
+
+/* Action requested to pm_qos_update_target */
 enum pm_qos_req_action {
 	PM_QOS_ADD_REQ,		
 	PM_QOS_UPDATE_REQ,	
@@ -61,6 +81,9 @@ static inline int dev_pm_qos_request_active(struct dev_pm_qos_request *req)
 
 int pm_qos_update_target(struct pm_qos_constraints *c, struct plist_node *node,
 			 enum pm_qos_req_action action, int value);
+bool pm_qos_update_flags(struct pm_qos_flags *pqf,
+			 struct pm_qos_flags_request *req,
+			 enum pm_qos_req_action action, s32 val);
 void pm_qos_add_request(struct pm_qos_request *req, int pm_qos_class,
 			s32 value);
 void pm_qos_update_request(struct pm_qos_request *req,
