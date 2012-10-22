@@ -78,9 +78,16 @@ struct pm_qos_flags_request {
 	s32 flags;	/* Do not change to 64 bit */
 };
 
+enum dev_pm_qos_req_type {
+	DEV_PM_QOS_LATENCY = 1,
+	DEV_PM_QOS_FLAGS,
+};
+
 struct dev_pm_qos_request {
+	enum dev_pm_qos_req_type type;
 	union {
 		struct plist_node pnode;
+		struct pm_qos_flags_request flr;
 	} data;
 	struct device *dev;
 };
@@ -168,6 +175,7 @@ struct pm_qos_flags {
 
 struct dev_pm_qos {
 	struct pm_qos_constraints latency;
+	struct pm_qos_flags flags;
 };
 
 struct dev_pm_qos {
@@ -227,10 +235,12 @@ int pm_qos_request_active(struct pm_qos_request *req);
 s32 pm_qos_read_value(struct pm_qos_constraints *c);
 
 #ifdef CONFIG_PM
+enum pm_qos_flags_status __dev_pm_qos_flags(struct device *dev, s32 mask);
+enum pm_qos_flags_status dev_pm_qos_flags(struct device *dev, s32 mask);
 s32 __dev_pm_qos_read_value(struct device *dev);
 s32 dev_pm_qos_read_value(struct device *dev);
 int dev_pm_qos_add_request(struct device *dev, struct dev_pm_qos_request *req,
-			   s32 value);
+			   enum dev_pm_qos_req_type type, s32 value);
 int dev_pm_qos_update_request(struct dev_pm_qos_request *req, s32 new_value);
 int dev_pm_qos_remove_request(struct dev_pm_qos_request *req);
 int dev_pm_qos_add_notifier(struct device *dev,
@@ -244,12 +254,19 @@ void dev_pm_qos_constraints_destroy(struct device *dev);
 int dev_pm_qos_add_ancestor_request(struct device *dev,
 				    struct dev_pm_qos_request *req, s32 value);
 #else
+static inline enum pm_qos_flags_status __dev_pm_qos_flags(struct device *dev,
+							  s32 mask)
+			{ return PM_QOS_FLAGS_UNDEFINED; }
+static inline enum pm_qos_flags_status dev_pm_qos_flags(struct device *dev,
+							s32 mask)
+			{ return PM_QOS_FLAGS_UNDEFINED; }
 static inline s32 __dev_pm_qos_read_value(struct device *dev)
 			{ return 0; }
 static inline s32 dev_pm_qos_read_value(struct device *dev)
 			{ return 0; }
 static inline int dev_pm_qos_add_request(struct device *dev,
 					 struct dev_pm_qos_request *req,
+					 enum dev_pm_qos_req_type type,
 					 s32 value)
 			{ return 0; }
 static inline int dev_pm_qos_update_request(struct dev_pm_qos_request *req,
