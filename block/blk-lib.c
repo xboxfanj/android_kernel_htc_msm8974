@@ -87,7 +87,7 @@ int blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 
 	
 	if (!atomic_dec_and_test(&bb.done))
-		wait_for_completion(&wait);
+		wait_for_completion_io(&wait);
 
 	if (!test_bit(BIO_UPTODATE, &bb.flags))
 		ret = -EIO;
@@ -130,7 +130,7 @@ int blkdev_issue_sanitize(struct block_device *bdev, gfp_t gfp_mask)
 
 	
 	if (!atomic_dec_and_test(&bb.done))
-		wait_for_completion(&wait);
+		wait_for_completion_io(&wait);
 
 	if (!test_bit(BIO_UPTODATE, &bb.flags))
 		ret = -EIO;
@@ -182,7 +182,7 @@ int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
 
 	
 	if (!atomic_dec_and_test(&bb.done))
-		wait_for_completion(&wait);
+		wait_for_completion_io(&wait);
 
 	if (!test_bit(BIO_UPTODATE, &bb.flags))
 		
