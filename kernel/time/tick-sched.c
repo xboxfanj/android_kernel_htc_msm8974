@@ -270,7 +270,12 @@ static void tick_nohz_stop_sched_tick(struct tick_sched *ts)
 			delta_jiffies = rcu_delta_jiffies;
 		}
 	}
-	if (!ts->tick_stopped && delta_jiffies == 1)
+
+	/*
+	 * Do not stop the tick, if we are only one off (or less)
+	 * or if the cpu is required for RCU:
+	 */
+	if (!ts->tick_stopped && delta_jiffies <= 1)
 		goto out;
 
 	
