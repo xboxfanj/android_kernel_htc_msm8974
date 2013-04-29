@@ -31,7 +31,7 @@
 	__rem;							\
 })
 
-#if __GNUC__ < 4
+#if __GNUC__ < 4 || !defined(CONFIG_AEABI)
 
 #define do_div(n, base) __do_div_asm(n, base)
 
