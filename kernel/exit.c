@@ -818,7 +818,15 @@ void do_exit(long code)
 	if (unlikely(current->pi_state_cache))
 		kfree(current->pi_state_cache);
 #endif
-	debug_check_no_locks_held(tsk);
+	/*
+	 * Make sure we are holding no locks:
+	 */
+	debug_check_no_locks_held();
+	/*
+	 * We can do this unlocked here. The futex code uses this flag
+	 * just to verify whether the pi state cleanup has been done
+	 * or not. In the worst case it loops once more.
+	 */
 	tsk->flags |= PF_EXITPIDONE;
 
 	if (tsk->io_context)
