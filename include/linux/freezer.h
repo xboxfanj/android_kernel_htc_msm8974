@@ -160,6 +160,16 @@ static inline int freezer_should_skip(struct task_struct *p)
 	__retval;							\
 })
 
+/* DO NOT ADD ANY NEW CALLERS OF THIS FUNCTION */
+#define wait_event_freezekillable_unsafe(wq, condition)			\
+({									\
+	int __retval;							\
+	freezer_do_not_count();						\
+	__retval = wait_event_killable(wq, (condition));		\
+	freezer_count_unsafe();						\
+	__retval;							\
+})
+
 #define wait_event_freezable(wq, condition)				\
 ({									\
 	int __retval;							\
@@ -224,6 +234,9 @@ static inline void set_freezable(void) {}
 #define wait_event_freezekillable(wq, condition)		\
 		wait_event_killable(wq, condition)
 
-#endif 
+#define wait_event_freezekillable_unsafe(wq, condition)			\
+		wait_event_killable(wq, condition)
+
+#endif /* !CONFIG_FREEZER */
 
 #endif	
