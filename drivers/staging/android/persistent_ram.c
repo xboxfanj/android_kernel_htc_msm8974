@@ -594,6 +594,14 @@ persistent_ram_init_ringbuffer_by_name(const char *name, bool ecc)
 	return __persistent_ram_init(name, ecc);
 }
 
+void persistent_ram_add(struct persistent_ram *ram)
+{
+	list_add_tail(&ram->node, &persistent_ram_list);
+
+	pr_info("Initialized persistent memory from %08lx-%08lx\n",
+		(long)ram->start, (long)(ram->start + ram->size - 1));
+}
+
 int __init persistent_ram_early_init(struct persistent_ram *ram)
 {
 	int ret;
@@ -605,10 +613,7 @@ int __init persistent_ram_early_init(struct persistent_ram *ram)
 		return ret;
 	}
 
-	list_add_tail(&ram->node, &persistent_ram_list);
-
-	pr_info("Initialized persistent memory from %08lx-%08lx\n",
-		(long)ram->start, (long)(ram->start + ram->size - 1));
+	persistent_ram_add(ram);
 
 	return 0;
 }
