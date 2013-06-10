@@ -594,7 +594,7 @@ persistent_ram_init_ringbuffer_by_name(const char *name, bool ecc)
 	return __persistent_ram_init(name, ecc);
 }
 
-void persistent_ram_add(struct persistent_ram *ram)
+void __devinit persistent_ram_add(struct persistent_ram *ram)
 {
 	list_add_tail(&ram->node, &persistent_ram_list);
 
