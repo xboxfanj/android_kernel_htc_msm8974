@@ -24,8 +24,6 @@
 
 DEFINE_MUTEX(cpuquiet_lock);
 
-extern int __init cpq_auto_hotplug_init(void);
-
 static int __init cpuquiet_init(void)
 {
 	int ret;
@@ -33,10 +31,9 @@ static int __init cpuquiet_init(void)
 	ret = cpuquiet_add_interface(cpu_subsys.dev_root);
 	if (ret)
 		return ret;
-
-	cpq_auto_hotplug_init();
 		
 	return 0;
 }
 
 core_initcall(cpuquiet_init);
+

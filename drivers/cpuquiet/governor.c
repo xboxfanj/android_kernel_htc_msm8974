@@ -26,6 +26,8 @@ LIST_HEAD(cpuquiet_governors);
 struct cpuquiet_governor *cpuquiet_curr_governor;
 static struct cpuquiet_governor* default_gov = NULL;
 
+extern int cpq_auto_hotplug_init(void);
+
 /*
  * only after register we can check for the kernel
  * config default governor and set it
@@ -94,13 +96,17 @@ int cpuquiet_switch_governor(struct cpuquiet_governor *gov)
 	return err;
 }
 
-int cpuquiet_register_governor(struct cpuquiet_governor *gov)
+int __init cpuquiet_register_governor(struct cpuquiet_governor *gov)
 {
 	int ret = -EEXIST;
 
 	if (!gov)
 		return -EINVAL;
 
+	// if there is at least one governor start hotplugging
+	if (!cpuquiet_get_driver())
+		cpq_auto_hotplug_init();
+	
 	mutex_lock(&cpuquiet_lock);
 	if (cpuquiet_find_governor(gov->name) == NULL) {
 		ret = 0;

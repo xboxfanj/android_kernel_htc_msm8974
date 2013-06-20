@@ -181,9 +181,6 @@ int cpuquiet_cpu_kobject_init(struct kobject *kobj, struct kobj_type *type,
 	return err;
 }
 
-/**
- * cpuidle_add_interface - add CPU global sysfs attributes
- */
 int cpuquiet_add_interface(struct device *dev)
 {
 	int err;

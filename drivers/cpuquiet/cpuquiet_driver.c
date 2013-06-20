@@ -382,7 +382,7 @@ static int cpq_auto_sysfs(void)
 		return -ENOMEM;
 
 	err = cpuquiet_kobject_init(auto_sysfs_kobject, &ktype_sysfs,
-				"cpuquiet");
+				"cpuquiet_driver");
 
 	if (err)
 		kfree(auto_sysfs_kobject);
