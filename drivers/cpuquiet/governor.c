@@ -38,7 +38,7 @@ void cpuquiet_set_default_governor(struct cpuquiet_governor* gov)
 	if (!strnicmp("balanced", gov->name, CPUQUIET_NAME_LEN))
 		default_gov = gov;
 #endif
-#ifdef CONFIG_CPUQUIET_DEFAULT_GOV_RQSTATS
+#ifdef CONFIG_CPUQUIET_DEFAULT_GOV_RQ_STATS
 	if (!strnicmp("rq_stats", gov->name, CPUQUIET_NAME_LEN))
 		default_gov = gov;
 #endif
@@ -46,7 +46,14 @@ void cpuquiet_set_default_governor(struct cpuquiet_governor* gov)
 	if (!strnicmp("runnable", gov->name, CPUQUIET_NAME_LEN))
 		default_gov = gov;
 #endif
-
+#ifdef CONFIG_CPUQUIET_DEFAULT_GOV_MAKO_HOTPLUG
+	if (!strnicmp("mako_hotplug", gov->name, CPUQUIET_NAME_LEN))
+		default_gov = gov;
+#endif
+#ifdef CONFIG_CPUQUIET_DEFAULT_GOV_LOAD_STATS
+	if (!strnicmp("load_stats", gov->name, CPUQUIET_NAME_LEN))
+		default_gov = gov;
+#endif
 	if (default_gov != NULL)
 		cpuquiet_switch_governor(default_gov); 
 }

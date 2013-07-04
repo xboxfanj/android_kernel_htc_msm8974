@@ -23,13 +23,6 @@ config CPUQUIET_DEFAULT_GOV_BALANCED
 	  Use the CPUQuiet governor 'balanced' as default. This dynamically
 	  scales the number of cpus online in the system based on the cpu
 	  load
-	  
-config CPUQUIET_DEFAULT_GOV_RQSTATS
-	bool "rq_stats"
-	select CPUQUIET_GOVERNOR_RQSTATS
-	help
-	  Use the CPUQuiet governor 'rq_stats' as default. This uses
-	  rq information to scale the number of cpus online in the system
 
 config CPUQUIET_DEFAULT_GOV_RUNNABLE
 	bool "runnable"
@@ -38,29 +31,54 @@ config CPUQUIET_DEFAULT_GOV_RUNNABLE
 	  Use the CPUQuiet governor 'runnable' as default. This uses
 	  the number of running threads ato scale the number of cpus  
 	  online in the system
-
-endchoice
-
-config CPUQUIET_GOVERNOR_RQSTATS
+	  
+config CPUQUIET_DEFAULT_GOV_RQ_STATS
 	bool "rq_stats"
+	select CPUQUIET_GOVERNOR_RQ_STATS
 	help
 	  Use the CPUQuiet governor 'rq_stats' as default. This uses
 	  rq information to scale the number of cpus online in the system
 
-config CPUQUIET_GOVERNOR_RUNNABLE
-	bool "runnable"
+config CPUQUIET_DEFAULT_GOV_LOAD_STATS
+	bool "load_stats"
+	select CPUQUIET_GOVERNOR_LOAD_STATS
 	help
-	  Use the CPUQuiet governor 'runnable' as default. This uses
-	  the number of running threads ato scale the number of cpus 
-	  online in the system
+	  Use the CPUQuiet governor 'load_stats' as default
+
+config CPUQUIET_DEFAULT_GOV_GOMAKO_HOTPLUG
+	bool "mako_hotplug"
+	select CPUQUIET_GOVERNOR_MAKO_HOTPLUG
+	help
+	  Use the CPUQuiet governor 'mako_hotplug' as default
+	  
+endchoice
 
 config CPUQUIET_GOVERNOR_BALANCED
 	bool "balanced"
 	depends on CPU_FREQ
 	help
-	  Use the CPUQuiet governor 'balanced' as default. This dynamically
-	  scales the number of cpus online in the system based on the cpu
-	  load
+	  Add the CPUQuiet governor 'balanced'
+
+config CPUQUIET_GOVERNOR_RUNNABLE
+	bool "runnable"
+	help
+	  Add the CPUQuiet governor 'runnable'
+
+config CPUQUIET_GOVERNOR_RQ_STATS
+	bool "rq_stats"
+	help
+	  Add the CPUQuiet governor 'rq_stats'
+
+config CPUQUIET_GOVERNOR_LOAD_STATS
+	bool "load_stats"
+	help
+	  Add the CPUQuiet governor 'load_stats'
+
+config CPUQUIET_GOVERNOR_MAKO_HOTPLUG
+	bool "mako_hotplug"
+	depends on CPU_FREQ
+	help
+	  Add the CPUQuiet governor 'mako_hotplug'
 
 endif
 endmenu
