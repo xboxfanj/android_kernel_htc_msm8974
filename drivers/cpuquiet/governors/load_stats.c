@@ -46,7 +46,7 @@ static load_stats_STATE load_stats_state;
 static struct workqueue_struct *load_stats_wq;
 
 static unsigned int Load_Threshold[8] = {80, 70, 60, 50, 40, 30, 0, 20};
-static unsigned int TwTs_Threshold[8] = {60, 0, 60, 90, 60, 90, 0, 90};
+static unsigned int TwTs_Threshold[8] = {60, 0, 60, 100, 60, 100, 0, 60};
 
 extern unsigned int get_rq_info(void);
 
@@ -334,6 +334,9 @@ static void load_stats_stop(void)
 {
 	load_stats_state = DISABLED;
 	cancel_delayed_work_sync(&load_stats_work);
+
+	enable_rq_load_calc(false);
+
 	destroy_workqueue(load_stats_wq);
 	kobject_put(load_stats_kobject);
 }
@@ -352,6 +355,8 @@ static int load_stats_start(void)
 		return -ENOMEM;
 
 	INIT_DELAYED_WORK(&load_stats_work, load_stats_work_func);
+
+	enable_rq_load_calc(true);
 
 	load_stats_state = IDLE;
 	load_stats_work_func(NULL);
