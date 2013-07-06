@@ -46,8 +46,6 @@ struct early_suspend cpuquiet_early_suspender;
 #endif
 static bool screen_off_cap_active = false;
 
-#define CPUQUIET_TAG                       "[CPUQUIET]: "
-
 static bool log_hotplugging = false;
 #define hotplug_info(msg...) do { \
 	if (log_hotplugging) pr_info("[CPUQUIET]: " msg); \

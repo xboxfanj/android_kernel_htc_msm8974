@@ -34,7 +34,7 @@ typedef enum {
 	IDLE,
 	DOWN,
 	UP,
-} load_stats_STATE;
+} LOAD_STATS_STATE;
 
 static struct delayed_work load_stats_work;
 static struct kobject *load_stats_kobject;
@@ -42,13 +42,19 @@ static struct kobject *load_stats_kobject;
 /* configurable parameters */
 static unsigned int sample_rate = 60;		/* msec */
 static unsigned int start_delay = 20000;
-static load_stats_STATE load_stats_state;
+static LOAD_STATS_STATE load_stats_state;
 static struct workqueue_struct *load_stats_wq;
 
 static unsigned int Load_Threshold[8] = {80, 70, 60, 50, 40, 30, 0, 20};
 static unsigned int TwTs_Threshold[8] = {60, 0, 60, 100, 60, 100, 0, 60};
 
 extern unsigned int get_rq_info(void);
+
+static u64 input_boost_end_time = 0;
+static bool input_boost_running = false;
+static unsigned int input_boost_duration = 250; /* ms */
+static unsigned int input_boost_cpus = 2;
+static unsigned int input_boost_enabled = true;
 
 DEFINE_MUTEX(load_stats_work_lock);
 
@@ -106,18 +112,18 @@ static void update_load_stats_state(void)
 		index = (nr_cpu_online - 1) * 2;
 		if ((nr_cpu_online < CONFIG_NR_CPUS) && (load >= Load_Threshold[index])) {
 			if (total_time >= TwTs_Threshold[index]) {
-            	if (nr_cpu_online < max_cpus){
+           		if (nr_cpu_online < max_cpus){
 #if DEBUG
-            		pr_info(LOAD_STATS_TAG "UP load=%d total_time=%lld Load_Threshold[index]=%d TwTs_Threshold[index]=%d nr_cpu_online=%d min_cpus=%d max_cpus=%d\n", load, total_time, Load_Threshold[index], TwTs_Threshold[index], nr_cpu_online, min_cpus, max_cpus);
+           			pr_info(LOAD_STATS_TAG "UP load=%d total_time=%lld Load_Threshold[index]=%d TwTs_Threshold[index]=%d nr_cpu_online=%d min_cpus=%d max_cpus=%d\n", load, total_time, Load_Threshold[index], TwTs_Threshold[index], nr_cpu_online, min_cpus, max_cpus);
 #endif
-                	load_stats_state = UP;
-                }
+           	    	load_stats_state = UP;
+           	    }
 			}
 		} else if (load <= Load_Threshold[index+1]) {
 			if (total_time >= TwTs_Threshold[index+1] ) {
-            	if ((nr_cpu_online > 1) && (nr_cpu_online > min_cpus)){
+           		if ((nr_cpu_online > 1) && (nr_cpu_online > min_cpus)){
 #if DEBUG
-            		pr_info(LOAD_STATS_TAG "DOWN load=%d total_time=%lld Load_Threshold[index+1]=%d TwTs_Threshold[index+1]=%d nr_cpu_online=%d min_cpus=%d max_cpus=%d\n", load, total_time, Load_Threshold[index+1], TwTs_Threshold[index+1], nr_cpu_online, min_cpus, max_cpus);
+           			pr_info(LOAD_STATS_TAG "DOWN load=%d total_time=%lld Load_Threshold[index+1]=%d TwTs_Threshold[index+1]=%d nr_cpu_online=%d min_cpus=%d max_cpus=%d\n", load, total_time, Load_Threshold[index+1], TwTs_Threshold[index+1], nr_cpu_online, min_cpus, max_cpus);
 #endif
                    	load_stats_state = DOWN;
                 }
@@ -130,9 +136,27 @@ static void update_load_stats_state(void)
 		total_time = 0;
 	}
 
-	if (load_stats_state != IDLE) {
-		total_time = 0;
+	if (input_boost_running && current_time > input_boost_end_time)
+		input_boost_running = false;
+
+	if (input_boost_running){
+		if (load_stats_state != UP){
+			if (nr_cpu_online < input_boost_cpus){
+				load_stats_state = UP;
+#if DEBUG
+				pr_info(LOAD_STATS_TAG "UP because of input boost\n");
+#endif
+			} else {
+				load_stats_state = IDLE;
+#if DEBUG
+				pr_info(LOAD_STATS_TAG "IDLE because of input boost\n");
+#endif
+			}
+		}
 	}
+	
+	if (load_stats_state != IDLE)
+		total_time = 0;
 
 	last_time = ktime_to_ms(ktime_get());
 }
@@ -257,9 +281,15 @@ store_one_nwns(load_threshold_6, 6);
 store_one_nwns(load_threshold_7, 7);
 
 CPQ_BASIC_ATTRIBUTE(sample_rate, 0644, uint);
+CPQ_BASIC_ATTRIBUTE(input_boost_enabled, 0644, uint);
+CPQ_BASIC_ATTRIBUTE(input_boost_cpus, 0644, uint);
+CPQ_BASIC_ATTRIBUTE(input_boost_duration, 0644, uint);
 
 static struct attribute *load_stats_attributes[] = {
 	&sample_rate_attr.attr,
+	&input_boost_enabled_attr.attr,
+	&input_boost_cpus_attr.attr,
+	&input_boost_duration_attr.attr,
 	&twts_threshold_0.attr,
 	&twts_threshold_1.attr,
 	&twts_threshold_2.attr,
@@ -311,7 +341,7 @@ static int load_stats_sysfs(void)
 static void load_stats_device_busy(void)
 {
 #if DEBUG
-	pr_info(LOAD_STATS_TAG "load_stats_device_busy");
+	pr_info(LOAD_STATS_TAG "%s\n", __func__);
 #endif
 	if (load_stats_state != DISABLED) {
 		load_stats_state = DISABLED;
@@ -322,11 +352,19 @@ static void load_stats_device_busy(void)
 static void load_stats_device_free(void)
 {
 #if DEBUG
-	pr_info(LOAD_STATS_TAG "load_stats_device_free");
+	pr_info(LOAD_STATS_TAG "%s\n", __func__);
 #endif
 	if (load_stats_state == DISABLED) {
 		load_stats_state = IDLE;
 		load_stats_work_func(NULL);
+	}
+}
+
+static void load_stats_touch_event(void)
+{
+	if (input_boost_enabled && !input_boost_running){
+		input_boost_running = true;
+		input_boost_end_time = ktime_to_ms(ktime_get()) + input_boost_duration;
 	}
 }
 
@@ -370,6 +408,7 @@ struct cpuquiet_governor load_stats_governor = {
 	.device_free_notification = load_stats_device_free,
 	.device_busy_notification = load_stats_device_busy,
 	.stop			  = load_stats_stop,
+	.touch_event_notification = load_stats_touch_event,
 	.owner		   	  = THIS_MODULE,
 };
 

@@ -23,6 +23,7 @@
 #include <linux/kobject.h>
 
 #define CPUQUIET_NAME_LEN 16
+#define CPUQUIET_TAG                       "[CPUQUIET]: "
 
 struct cpuquiet_governor {
 	char			name[CPUQUIET_NAME_LEN];
@@ -32,6 +33,7 @@ struct cpuquiet_governor {
 	int (*store_active)	(unsigned int cpu, bool active);
 	void (*device_free_notification) (void);
 	void (*device_busy_notification) (void);
+	void (*touch_event_notification) (void);
 	struct module		*owner;
 };
 
@@ -51,6 +53,7 @@ extern int cpuquiet_add_group(struct attribute_group *attrs);
 extern void cpuquiet_remove_group(struct attribute_group *attrs);
 extern void cpuquiet_device_busy(void);
 extern void cpuquiet_device_free(void);
+extern void cpuquiet_touch_event(void);
 int cpuquiet_kobject_init(struct kobject *kobj, struct kobj_type *type,
 				char *name);
 extern unsigned int nr_cluster_ids;

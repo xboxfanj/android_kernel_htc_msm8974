@@ -50,6 +50,12 @@ static unsigned int TwTs_Threshold[8] = {60, 0, 60, 90, 60, 90, 0, 90};
 
 extern unsigned int get_rq_info(void);
 
+static u64 input_boost_end_time = 0;
+static bool input_boost_running = false;
+static unsigned int input_boost_duration = 250; /* ms */
+static unsigned int input_boost_cpus = 2;
+static unsigned int input_boost_enabled = true;
+
 DEFINE_MUTEX(rq_stats_work_lock);
 
 static unsigned int get_lightest_loaded_cpu_n(void)
@@ -130,9 +136,27 @@ static void update_rq_stats_state(void)
 		total_time = 0;
 	}
 
-	if (rq_stats_state != IDLE) {
-		total_time = 0;
+	if (input_boost_running && current_time > input_boost_end_time)
+		input_boost_running = false;
+
+	if (input_boost_running){
+		if (rq_stats_state != UP){
+			if (nr_cpu_online < input_boost_cpus){
+				rq_stats_state = UP;
+#if DEBUG
+				pr_info(RQ_STATS_TAG "UP because of input boost\n");
+#endif
+			} else {
+				rq_stats_state = IDLE;
+#if DEBUG
+				pr_info(RQ_STATS_TAG "IDLE because of input boost\n");
+#endif
+			}
+		}
 	}
+
+	if (rq_stats_state != IDLE)
+		total_time = 0;
 
 	last_time = ktime_to_ms(ktime_get());
 }
@@ -257,9 +281,15 @@ store_one_nwns(nwns_threshold_6, 6);
 store_one_nwns(nwns_threshold_7, 7);
 
 CPQ_BASIC_ATTRIBUTE(sample_rate, 0644, uint);
+CPQ_BASIC_ATTRIBUTE(input_boost_enabled, 0644, uint);
+CPQ_BASIC_ATTRIBUTE(input_boost_cpus, 0644, uint);
+CPQ_BASIC_ATTRIBUTE(input_boost_duration, 0644, uint);
 
 static struct attribute *rq_stats_attributes[] = {
 	&sample_rate_attr.attr,
+	&input_boost_enabled_attr.attr,
+	&input_boost_cpus_attr.attr,
+	&input_boost_duration_attr.attr,
 	&twts_threshold_0.attr,
 	&twts_threshold_1.attr,
 	&twts_threshold_2.attr,
@@ -311,7 +341,7 @@ static int rq_stats_sysfs(void)
 static void rq_stats_device_busy(void)
 {
 #if DEBUG
-	pr_info(RQ_STATS_TAG "rq_stats_device_busy");
+	pr_info(RQ_STATS_TAG "%s\n", __func__);
 #endif
 	if (rq_stats_state != DISABLED) {
 		rq_stats_state = DISABLED;
@@ -322,11 +352,19 @@ static void rq_stats_device_busy(void)
 static void rq_stats_device_free(void)
 {
 #if DEBUG
-	pr_info(RQ_STATS_TAG "rq_stats_device_free");
+	pr_info(RQ_STATS_TAG "%s\n", __func__);
 #endif
 	if (rq_stats_state == DISABLED) {
 		rq_stats_state = IDLE;
 		rq_stats_work_func(NULL);
+	}
+}
+
+static void load_stats_touch_event(void)
+{
+	if (input_boost_enabled && !input_boost_running){
+		input_boost_running = true;
+		input_boost_end_time = ktime_to_ms(ktime_get()) + input_boost_duration;
 	}
 }
 
@@ -365,6 +403,7 @@ struct cpuquiet_governor rq_stats_governor = {
 	.device_free_notification = rq_stats_device_free,
 	.device_busy_notification = rq_stats_device_busy,
 	.stop			  = rq_stats_stop,
+	.touch_event_notification = load_stats_touch_event,
 	.owner		   	  = THIS_MODULE,
 };
 
