@@ -95,6 +95,9 @@ static void update_load_stats_state(void)
 	if (load_stats_state == DISABLED)
 		return;
 
+	if (!rq_data_init_done)
+		return;
+
 	current_time = ktime_to_ms(ktime_get());
 	if (current_time <= start_delay){
 		load_stats_state = IDLE;

@@ -32,6 +32,7 @@
 
 /* only enable on demand if needed */
 static bool load_stats_enabled = false;
+bool rq_data_init_done = false;
 
 #define MAX_LONG_SIZE 24
 #define DEFAULT_RQ_POLL_JIFFIES 1
@@ -58,16 +59,16 @@ static DEFINE_PER_CPU(struct cpu_load_data, cpuload);
 unsigned int get_rq_info(void)
 {
 	unsigned long flags = 0;
-        unsigned int rq = 0;
+	unsigned int rq = 0;
 
-        spin_lock_irqsave(&rq_lock, flags);
+	spin_lock_irqsave(&rq_lock, flags);
 
-        rq = rq_info.rq_avg;
-        rq_info.rq_avg = 0;
+	rq = rq_info.rq_avg;
+	rq_info.rq_avg = 0;
 
-        spin_unlock_irqrestore(&rq_lock, flags);
+	spin_unlock_irqrestore(&rq_lock, flags);
 
-        return rq;
+	return rq;
 }
 EXPORT_SYMBOL(get_rq_info);
 
@@ -170,6 +171,9 @@ static unsigned int report_load_at_max_freq(void)
 	struct cpu_load_data *pcpu;
 	unsigned int total_load = 0;
 
+	if (!rq_data_init_done)
+		return 0;
+
 	pcpu = &per_cpu(cpuload, cpu);
 	mutex_lock(&pcpu->cpu_load_mutex);
 	update_average_load(pcpu->cur_freq, cpu);
@@ -186,6 +190,9 @@ static int cpufreq_transition_handler(struct notifier_block *nb,
 	struct cpufreq_freqs *freqs = data;
 	struct cpu_load_data *this_cpu = &per_cpu(cpuload, freqs->cpu);
 	int j;
+
+	if (!rq_data_init_done)
+		return 0;
 
 	switch (val) {
 	case CPUFREQ_POSTCHANGE:
@@ -259,6 +266,10 @@ void enable_rq_load_calc(bool on)
 		load_stats_enabled = on;
 
 		pr_info("Enable rq_stats load calculation %d\n", load_stats_enabled);
+		
+		if (!rq_data_init_done)
+			return;
+
 		if (load_stats_enabled) {
 			// clear data
 			for_each_possible_cpu(cpu) {
@@ -303,8 +314,9 @@ static void def_work_fn(struct work_struct *work)
 	do_div(diff, 1000 * 1000);
 	rq_info.def_interval = (unsigned int) diff;
 
-	
-	sysfs_notify(rq_info.kobj, NULL, "def_timer_ms");
+	/* Notify polling threads on change of value */
+	if (rq_data_init_done)
+		sysfs_notify(rq_info.kobj, NULL, "def_timer_ms");
 }
 
 static ssize_t run_queue_avg_show(struct kobject *kobj,
@@ -475,6 +487,7 @@ static int __init msm_rq_stats_init(void)
 					CPUFREQ_POLICY_NOTIFIER);
 	}
 	
+	rq_data_init_done = true;
 	return ret;
 }
 late_initcall(msm_rq_stats_init);
