@@ -21,6 +21,7 @@
 #include <linux/cpu.h>
 #include <linux/sched.h>
 #include <linux/cpufreq.h>
+#include <linux/kthread.h>
 
 #define DEBUG 0
 #define RQ_STATS_TAG                       "[RQ_STATS]: "
@@ -40,13 +41,13 @@ static struct delayed_work rq_stats_work;
 static struct kobject *rq_stats_kobject;
 
 /* configurable parameters */
-static unsigned int sample_rate = 60;		/* msec */
+static unsigned int sample_rate = 80;		/* msec */
 static unsigned int start_delay = 20000;
 static RQ_STATS_STATE rq_stats_state;
 static struct workqueue_struct *rq_stats_wq;
 
 static unsigned int NwNs_Threshold[8] = {20, 14, 26, 16, 30, 18, 0, 20};
-static unsigned int TwTs_Threshold[8] = {60, 0, 60, 90, 60, 90, 0, 90};
+static unsigned int TwTs_Threshold[8] = {80, 120, 80, 120, 80, 120, 0, 120};
 
 extern unsigned int get_rq_info(void);
 
@@ -55,6 +56,8 @@ static bool input_boost_running = false;
 static unsigned int input_boost_duration = 250; /* ms */
 static unsigned int input_boost_cpus = 2;
 static unsigned int input_boost_enabled = true;
+static bool input_boost_task_alive = false;
+static struct task_struct *input_boost_task;
 
 DEFINE_MUTEX(rq_stats_work_lock);
 
@@ -141,17 +144,10 @@ static void update_rq_stats_state(void)
 
 	if (input_boost_running){
 		if (rq_stats_state != UP){
-			if (nr_cpu_online < input_boost_cpus){
-				rq_stats_state = UP;
+			rq_stats_state = IDLE;
 #if DEBUG
-				pr_info(RQ_STATS_TAG "UP because of input boost\n");
+			pr_info(RQ_STATS_TAG "IDLE because of input boost\n");
 #endif
-			} else {
-				rq_stats_state = IDLE;
-#if DEBUG
-				pr_info(RQ_STATS_TAG "IDLE because of input boost\n");
-#endif
-			}
 		}
 	}
 
@@ -161,15 +157,11 @@ static void update_rq_stats_state(void)
 	last_time = ktime_to_ms(ktime_get());
 }
 
-static void rq_stats_work_func(struct work_struct *work)
+static bool __rq_stats_work_func(void)
 {
 	bool up = false;
 	bool sample = false;
 	unsigned int cpu = nr_cpu_ids;
-
-	mutex_lock(&rq_stats_work_lock);
-
-	update_rq_stats_state();
 
 	switch (rq_stats_state) {
 	case DISABLED:
@@ -192,18 +184,73 @@ static void rq_stats_work_func(struct work_struct *work)
 		break;
 	}
 
-	if (sample)
-		queue_delayed_work(rq_stats_wq, &rq_stats_work,
-					msecs_to_jiffies(sample_rate));
-
 	if (cpu < nr_cpu_ids) {
 		if (up)
 			cpuquiet_wake_cpu(cpu);
 		else
 			cpuquiet_quiesence_cpu(cpu);
 	}
+	return sample;
+}
+
+static void rq_stats_work_func(struct work_struct *work)
+{
+	bool sample = false;
+
+	mutex_lock(&rq_stats_work_lock);
+
+	update_rq_stats_state();
+
+	sample = __rq_stats_work_func();
+
+	if (sample)
+		queue_delayed_work(rq_stats_wq, &rq_stats_work,
+				msecs_to_jiffies(sample_rate));
 
 	mutex_unlock(&rq_stats_work_lock);
+}
+
+static int load_stats_boost_task(void *data) {
+	unsigned int nr_cpu_online;
+	int i;
+
+	while (1) {
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule();
+
+		if (kthread_should_stop())
+			break;
+
+		set_current_state(TASK_RUNNING);
+
+		if (input_boost_running)
+			continue;
+
+		mutex_lock(&rq_stats_work_lock);
+		
+		input_boost_running = true;
+			
+		/* do boost work */
+		nr_cpu_online = num_online_cpus();
+		if (nr_cpu_online < input_boost_cpus){
+			for (i = nr_cpu_online; i < input_boost_cpus; i++){
+				rq_stats_state = UP;
+#if DEBUG
+				pr_info(RQ_STATS_TAG "UP because of input boost\n");
+#endif
+				__rq_stats_work_func();
+			}
+		}
+		input_boost_end_time = ktime_to_ms(ktime_get()) + input_boost_duration;
+			
+		mutex_unlock(&rq_stats_work_lock);
+	}
+
+#if DEBUG
+	pr_info(RQ_STATS_TAG "%s: input_boost_thread stopped\n", __func__);
+#endif
+
+	return 0;
 }
 
 #define show_one_twts(file_name, arraypos)                              \
@@ -363,8 +410,9 @@ static void rq_stats_device_free(void)
 static void load_stats_touch_event(void)
 {
 	if (input_boost_enabled && !input_boost_running){
-		input_boost_running = true;
-		input_boost_end_time = ktime_to_ms(ktime_get()) + input_boost_duration;
+		if (input_boost_task_alive)
+			wake_up_process(input_boost_task);
+		
 	}
 }
 
@@ -372,6 +420,10 @@ static void rq_stats_stop(void)
 {
 	rq_stats_state = DISABLED;
 	cancel_delayed_work_sync(&rq_stats_work);
+	
+	if (input_boost_task_alive)
+		kthread_stop(input_boost_task);
+
 	destroy_workqueue(rq_stats_wq);
 	kobject_put(rq_stats_kobject);
 }
@@ -379,6 +431,7 @@ static void rq_stats_stop(void)
 static int rq_stats_start(void)
 {
 	int err;
+	struct sched_param param = { .sched_priority = 1 };
 
 	err = rq_stats_sysfs();
 	if (err)
@@ -391,6 +444,23 @@ static int rq_stats_start(void)
 
 	INIT_DELAYED_WORK(&rq_stats_work, rq_stats_work_func);
 
+	input_boost_task = kthread_create (
+			load_stats_boost_task,
+					NULL,
+					"cpuquiet_input_boost_task"
+			);
+
+	if (IS_ERR(input_boost_task))
+		pr_err(RQ_STATS_TAG "%s: failed to create input boost task\n", __func__);
+	else {
+		sched_setscheduler_nocheck(input_boost_task, SCHED_RR, &param);
+		get_task_struct(input_boost_task);
+		input_boost_task_alive = true;
+#if DEBUG
+		pr_info(RQ_STATS_TAG "%s: input boost task created\n", __func__);
+#endif
+	}
+	
 	rq_stats_state = IDLE;
 	rq_stats_work_func(NULL);
 
