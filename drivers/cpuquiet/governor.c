@@ -98,8 +98,10 @@ int cpuquiet_switch_governor(struct cpuquiet_governor *gov)
 			return -EINVAL;
 		if (gov->start)
 			err = gov->start();
-		if (!err)
+		if (!err){
 			cpuquiet_curr_governor = gov;
+			pr_info(CPUQUIET_TAG "%s %s\n", __func__, gov->name);
+		}
 	}
 
 	return err;
@@ -118,6 +120,7 @@ int __init cpuquiet_register_governor(struct cpuquiet_governor *gov)
 	
 	mutex_lock(&cpuquiet_lock);
 	if (cpuquiet_find_governor(gov->name) == NULL) {
+		pr_info(CPUQUIET_TAG "%s %s\n", __func__, gov->name);
 		ret = 0;
 		list_add_tail(&gov->governor_list, &cpuquiet_governors);
 		if (!cpuquiet_curr_governor && cpuquiet_get_driver())
@@ -137,6 +140,7 @@ void cpuquiet_unregister_governor(struct cpuquiet_governor *gov)
 	mutex_lock(&cpuquiet_lock);
 	if (cpuquiet_curr_governor == gov)
 		cpuquiet_switch_governor(NULL);
+	pr_info(CPUQUIET_TAG "%s %s\n", __func__, gov->name);
 	list_del(&gov->governor_list);
 	mutex_unlock(&cpuquiet_lock);
 }
