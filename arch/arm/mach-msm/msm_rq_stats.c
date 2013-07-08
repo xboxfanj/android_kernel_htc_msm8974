@@ -246,6 +246,7 @@ static int freq_policy_handler(struct notifier_block *nb,
 {
 	struct cpufreq_policy *policy = data;
 	struct cpu_load_data *this_cpu = &per_cpu(cpuload, policy->cpu);
+	unsigned int old_policy_max = this_cpu->policy_max;
 
 	if (event != CPUFREQ_NOTIFY)
 		goto out;
@@ -253,7 +254,7 @@ static int freq_policy_handler(struct notifier_block *nb,
 	this_cpu->policy_max = policy->max;
 
 	pr_debug("Policy max changed from %u to %u, event %lu\n",
-			this_cpu->policy_max, policy->max, event);
+			old_policy_max, this_cpu->policy_max, event);
 out:
 	return NOTIFY_DONE;
 }
