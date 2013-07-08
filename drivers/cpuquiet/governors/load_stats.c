@@ -22,9 +22,6 @@
 #include <linux/rq_stats.h>
 #include <linux/kthread.h>
 
-#define DEBUG 0
-#define LOAD_STATS_TAG                       "[LOAD_STATS]: "
-
 // from cpuquiet.c
 extern unsigned int cpq_max_cpus(void);
 extern unsigned int cpq_min_cpus(void);
@@ -45,7 +42,7 @@ static unsigned int start_delay = 20000;
 static LOAD_STATS_STATE load_stats_state;
 static struct workqueue_struct *load_stats_wq;
 
-static unsigned int load_threshold[8] = {80, 70, 70, 60, 60, 50, 50, 40};
+static unsigned int load_threshold[8] = {90, 80, 80, 70, 70, 60, 60, 50};
 static unsigned int twts_threshold[8] = {140, 0, 140, 190, 140, 190, 0, 190};
 
 extern unsigned int get_rq_info(void);
@@ -59,6 +56,11 @@ static bool input_boost_task_alive = false;
 static struct task_struct *input_boost_task;
 
 DEFINE_MUTEX(load_stats_work_lock);
+
+static bool log_hotplugging = false;
+#define hotplug_info(msg...) do { \
+	if (log_hotplugging) pr_info("[LOAD_STATS]: " msg); \
+	} while (0)
 
 static unsigned int get_lightest_loaded_cpu_n(void)
 {
@@ -118,18 +120,14 @@ static void update_load_stats_state(void)
 		if ((nr_cpu_online < CONFIG_NR_CPUS) && (load >= load_threshold[index])) {
 			if (total_time >= twts_threshold[index]) {
            		if (nr_cpu_online < max_cpus){
-#if DEBUG
-           			pr_info(LOAD_STATS_TAG "UP load=%d total_time=%lld load_threshold[index]=%d twts_threshold[index]=%d nr_cpu_online=%d min_cpus=%d max_cpus=%d\n", load, total_time, load_threshold[index], twts_threshold[index], nr_cpu_online, min_cpus, max_cpus);
-#endif
+           			hotplug_info("UP load=%d total_time=%lld load_threshold[index]=%d twts_threshold[index]=%d nr_cpu_online=%d min_cpus=%d max_cpus=%d\n", load, total_time, load_threshold[index], twts_threshold[index], nr_cpu_online, min_cpus, max_cpus);
            	    	load_stats_state = UP;
            	    }
 			}
 		} else if (load <= load_threshold[index+1]) {
 			if (total_time >= twts_threshold[index+1] ) {
            		if ((nr_cpu_online > 1) && (nr_cpu_online > min_cpus)){
-#if DEBUG
-           			pr_info(LOAD_STATS_TAG "DOWN load=%d total_time=%lld load_threshold[index+1]=%d twts_threshold[index+1]=%d nr_cpu_online=%d min_cpus=%d max_cpus=%d\n", load, total_time, load_threshold[index+1], twts_threshold[index+1], nr_cpu_online, min_cpus, max_cpus);
-#endif
+           			hotplug_info("DOWN load=%d total_time=%lld load_threshold[index+1]=%d twts_threshold[index+1]=%d nr_cpu_online=%d min_cpus=%d max_cpus=%d\n", load, total_time, load_threshold[index+1], twts_threshold[index+1], nr_cpu_online, min_cpus, max_cpus);
                    	load_stats_state = DOWN;
                 }
 			}
@@ -147,9 +145,7 @@ static void update_load_stats_state(void)
 	if (input_boost_running){
 		if (load_stats_state != UP){
 			load_stats_state = IDLE;
-#if DEBUG
-			pr_info(LOAD_STATS_TAG "IDLE because of input boost\n");
-#endif
+			hotplug_info("IDLE because of input boost\n");
 		}
 	}
 	
@@ -237,9 +233,7 @@ static int load_stats_boost_task(void *data) {
 		if (nr_cpu_online < input_boost_cpus){
 			for (i = nr_cpu_online; i < input_boost_cpus; i++){
 				load_stats_state = UP;
-#if DEBUG
-				pr_info(LOAD_STATS_TAG "UP because of input boost\n");
-#endif
+				hotplug_info("UP because of input boost\n");
 				__load_stats_work_func();
 			}
 		}
@@ -248,9 +242,7 @@ static int load_stats_boost_task(void *data) {
 		mutex_unlock(&load_stats_work_lock);
 	}
 
-#if DEBUG
-	pr_info(LOAD_STATS_TAG "%s: input_boost_thread stopped\n", __func__);
-#endif
+	hotplug_info("%s: input_boost_thread stopped\n", __func__);
 
 	return 0;
 }
@@ -321,12 +313,37 @@ static ssize_t store_load_threshold(struct cpuquiet_attribute *cattr,
 	return count;
 }
 
+static ssize_t show_log_hotplugging(struct cpuquiet_attribute *cattr, char *buf)
+{
+	char *out = buf;
+		
+	out += sprintf(out, "%d\n", log_hotplugging);
+
+	return out - buf;
+}
+
+static ssize_t store_log_hotplugging(struct cpuquiet_attribute *cattr,
+					const char *buf, size_t count)
+{
+	int ret;
+	unsigned int n;
+		
+	ret = sscanf(buf, "%d", &n);
+
+	if ((ret != 1) || n < 0 || n > 1)
+		return -EINVAL;
+
+	log_hotplugging = n;	
+	return count;
+}
+
 CPQ_BASIC_ATTRIBUTE(sample_rate, 0644, uint);
 CPQ_BASIC_ATTRIBUTE(input_boost_enabled, 0644, uint);
 CPQ_BASIC_ATTRIBUTE(input_boost_cpus, 0644, uint);
 CPQ_BASIC_ATTRIBUTE(input_boost_duration, 0644, uint);
 CPQ_ATTRIBUTE_CUSTOM(twts_threshold, 0644, show_twts_threshold, store_twts_threshold);
 CPQ_ATTRIBUTE_CUSTOM(load_threshold, 0644, show_load_threshold, store_load_threshold);
+CPQ_ATTRIBUTE_CUSTOM(log_hotplugging, 0644, show_log_hotplugging, store_log_hotplugging);
 
 static struct attribute *load_stats_attributes[] = {
 	&sample_rate_attr.attr,
@@ -335,6 +352,7 @@ static struct attribute *load_stats_attributes[] = {
 	&input_boost_duration_attr.attr,
 	&twts_threshold_attr.attr,
 	&load_threshold_attr.attr,
+	&log_hotplugging_attr.attr,
 	NULL,
 };
 
@@ -369,9 +387,7 @@ static int load_stats_sysfs(void)
 
 static void load_stats_device_busy(void)
 {
-#if DEBUG
-	pr_info(LOAD_STATS_TAG "%s\n", __func__);
-#endif
+	hotplug_info("%s\n", __func__);
 	if (load_stats_state != DISABLED) {
 		load_stats_state = DISABLED;
 		cancel_delayed_work_sync(&load_stats_work);
@@ -380,9 +396,7 @@ static void load_stats_device_busy(void)
 
 static void load_stats_device_free(void)
 {
-#if DEBUG
-	pr_info(LOAD_STATS_TAG "%s\n", __func__);
-#endif
+	hotplug_info("%s\n", __func__);
 	if (load_stats_state == DISABLED) {
 		load_stats_state = IDLE;
 		load_stats_work_func(NULL);
@@ -437,14 +451,12 @@ static int load_stats_start(void)
 			);
 
 	if (IS_ERR(input_boost_task))
-		pr_err(LOAD_STATS_TAG "%s: failed to create input boost task\n", __func__);
+		pr_err("%s: failed to create input boost task\n", __func__);
 	else {
 		sched_setscheduler_nocheck(input_boost_task, SCHED_RR, &param);
 		get_task_struct(input_boost_task);
 		input_boost_task_alive = true;
-#if DEBUG
-		pr_info(LOAD_STATS_TAG "%s: input boost task created\n", __func__);
-#endif
+		hotplug_info("%s: input boost task created\n", __func__);
 	}
 	
 	load_stats_state = IDLE;
