@@ -20,7 +20,6 @@
 #include <linux/slab.h>
 #include <linux/cpu.h>
 #include <linux/sched.h>
-#include <linux/cpufreq.h>
 #include <linux/kthread.h>
 
 #define DEBUG 0
@@ -41,19 +40,19 @@ static struct delayed_work rq_stats_work;
 static struct kobject *rq_stats_kobject;
 
 /* configurable parameters */
-static unsigned int sample_rate = 80;		/* msec */
+static unsigned int sample_rate = 70;		/* msec */
 static unsigned int start_delay = 20000;
 static RQ_STATS_STATE rq_stats_state;
 static struct workqueue_struct *rq_stats_wq;
 
-static unsigned int NwNs_Threshold[8] = {20, 14, 26, 16, 30, 18, 0, 20};
-static unsigned int TwTs_Threshold[8] = {80, 120, 80, 120, 80, 120, 0, 120};
+static unsigned int nwns_threshold[8] = {20, 14, 26, 16, 30, 18, 0, 20};
+static unsigned int twts_threshold[8] = {140, 0, 140, 190, 140, 190, 0, 190};
 
 extern unsigned int get_rq_info(void);
 
 static u64 input_boost_end_time = 0;
 static bool input_boost_running = false;
-static unsigned int input_boost_duration = 250; /* ms */
+static unsigned int input_boost_duration = 3 * 70; /* ms */
 static unsigned int input_boost_cpus = 2;
 static unsigned int input_boost_enabled = true;
 static bool input_boost_task_alive = false;
@@ -113,20 +112,20 @@ static void update_rq_stats_state(void)
 
 	if (nr_cpu_online) {
 		index = (nr_cpu_online - 1) * 2;
-		if ((nr_cpu_online < CONFIG_NR_CPUS) && (rq_depth >= NwNs_Threshold[index])) {
-			if (total_time >= TwTs_Threshold[index]) {
+		if ((nr_cpu_online < CONFIG_NR_CPUS) && (rq_depth >= nwns_threshold[index])) {
+			if (total_time >= twts_threshold[index]) {
             	if (nr_cpu_online < max_cpus){
 #if DEBUG
-            		pr_info(RQ_STATS_TAG "UP rq_depth=%d total_time=%lld NwNs_Threshold[index]=%d TwTs_Threshold[index]=%d nr_cpu_online=%d min_cpus=%d max_cpus=%d\n", rq_depth, total_time, NwNs_Threshold[index], TwTs_Threshold[index], nr_cpu_online, min_cpus, max_cpus);
+            		pr_info(RQ_STATS_TAG "UP rq_depth=%d total_time=%lld nwns_threshold[index]=%d twts_threshold[index]=%d nr_cpu_online=%d min_cpus=%d max_cpus=%d\n", rq_depth, total_time, nwns_threshold[index], twts_threshold[index], nr_cpu_online, min_cpus, max_cpus);
 #endif
                 	rq_stats_state = UP;
                 }
 			}
-		} else if (rq_depth <= NwNs_Threshold[index+1]) {
-			if (total_time >= TwTs_Threshold[index+1] ) {
+		} else if (rq_depth <= nwns_threshold[index+1]) {
+			if (total_time >= twts_threshold[index+1] ) {
             	if ((nr_cpu_online > 1) && (nr_cpu_online > min_cpus)){
 #if DEBUG
-            		pr_info(RQ_STATS_TAG "DOWN rq_depth=%d total_time=%lld NwNs_Threshold[index+1]=%d TwTs_Threshold[index+1]=%d nr_cpu_online=%d min_cpus=%d max_cpus=%d\n", rq_depth, total_time, NwNs_Threshold[index+1], TwTs_Threshold[index+1], nr_cpu_online, min_cpus, max_cpus);
+            		pr_info(RQ_STATS_TAG "DOWN rq_depth=%d total_time=%lld nwns_threshold[index+1]=%d twts_threshold[index+1]=%d nr_cpu_online=%d min_cpus=%d max_cpus=%d\n", rq_depth, total_time, nwns_threshold[index+1], twts_threshold[index+1], nr_cpu_online, min_cpus, max_cpus);
 #endif
                    	rq_stats_state = DOWN;
                 }
@@ -253,106 +252,86 @@ static int load_stats_boost_task(void *data) {
 	return 0;
 }
 
-#define show_one_twts(file_name, arraypos)                              \
-static ssize_t show_##file_name                                         \
-(struct kobject *kobj, struct attribute *attr, char *buf)               \
-{                                                                       \
-	return sprintf(buf, "%u\n", TwTs_Threshold[arraypos]);          \
+static ssize_t show_twts_threshold(struct cpuquiet_attribute *cattr, char *buf)
+{
+	char *out = buf;
+		
+	out += sprintf(out, "%u %u %u %u %u %u %u %u\n", twts_threshold[0], twts_threshold[1], twts_threshold[2], twts_threshold[3], 
+	    twts_threshold[4], twts_threshold[5], twts_threshold[6], twts_threshold[7]);
+
+	return out - buf;
 }
-show_one_twts(twts_threshold_0, 0);
-show_one_twts(twts_threshold_1, 1);
-show_one_twts(twts_threshold_2, 2);
-show_one_twts(twts_threshold_3, 3);
-show_one_twts(twts_threshold_4, 4);
-show_one_twts(twts_threshold_5, 5);
-show_one_twts(twts_threshold_6, 6);
-show_one_twts(twts_threshold_7, 7);
 
-#define store_one_twts(file_name, arraypos)                             \
-static ssize_t store_##file_name                                        \
-(struct kobject *a, struct attribute *b, const char *buf, size_t count) \
-{                                                                       \
-	unsigned int input;                                             \
-	int ret;                                                        \
-	ret = sscanf(buf, "%u", &input);                                \
-	if (ret != 1)                                                   \
-		return -EINVAL;                                         \
-	TwTs_Threshold[arraypos] = input;                               \
-	return count;                                                   \
-}                                                                       \
-define_one_global_rw(file_name);                                                                       
-store_one_twts(twts_threshold_0, 0);
-store_one_twts(twts_threshold_1, 1);
-store_one_twts(twts_threshold_2, 2);
-store_one_twts(twts_threshold_3, 3);
-store_one_twts(twts_threshold_4, 4);
-store_one_twts(twts_threshold_5, 5);
-store_one_twts(twts_threshold_6, 6);
-store_one_twts(twts_threshold_7, 7);
+static ssize_t store_twts_threshold(struct cpuquiet_attribute *cattr,
+					const char *buf, size_t count)
+{
+	int ret;
+	int i;
+    unsigned int user_twts_threshold[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-#define show_one_nwns(file_name, arraypos)                              \
-static ssize_t show_##file_name                                         \
-(struct kobject *kobj, struct attribute *attr, char *buf)               \
-{                                                                       \
-	return sprintf(buf, "%u\n", NwNs_Threshold[arraypos]);          \
-}                                                                       
-show_one_nwns(nwns_threshold_0, 0);
-show_one_nwns(nwns_threshold_1, 1);
-show_one_nwns(nwns_threshold_2, 2);
-show_one_nwns(nwns_threshold_3, 3);
-show_one_nwns(nwns_threshold_4, 4);
-show_one_nwns(nwns_threshold_5, 5);
-show_one_nwns(nwns_threshold_6, 6);
-show_one_nwns(nwns_threshold_7, 7);
+	ret = sscanf(buf, "%u %u %u %u %u %u %u %u", &user_twts_threshold[0], &user_twts_threshold[1], &user_twts_threshold[2] , &user_twts_threshold[3],
+	    &user_twts_threshold[4], &user_twts_threshold[5], &user_twts_threshold[6], &user_twts_threshold[7]);
 
-#define store_one_nwns(file_name, arraypos)                             \
-static ssize_t store_##file_name                                        \
-(struct kobject *a, struct attribute *b, const char *buf, size_t count) \
-{                                                                       \
-	unsigned int input;                                             \
-	int ret;                                                        \
-	ret = sscanf(buf, "%u", &input);                                \
-	if (ret != 1)                                                   \
-		return -EINVAL;                                         \
-	NwNs_Threshold[arraypos] = input;                               \
-	return count;                                                   \
-}                                                                       \
-define_one_global_rw(file_name);
-store_one_nwns(nwns_threshold_0, 0);
-store_one_nwns(nwns_threshold_1, 1);
-store_one_nwns(nwns_threshold_2, 2);
-store_one_nwns(nwns_threshold_3, 3);
-store_one_nwns(nwns_threshold_4, 4);
-store_one_nwns(nwns_threshold_5, 5);
-store_one_nwns(nwns_threshold_6, 6);
-store_one_nwns(nwns_threshold_7, 7);
+	if (ret < 8)
+		return -EINVAL;
+
+	for (i = 0; i < 8; i++)
+		if (user_twts_threshold[i] < 0)
+			return -EINVAL;
+
+	for (i = 0; i < 8; i++)
+		twts_threshold[i]=user_twts_threshold[i];
+            
+	return count;
+}
+
+static ssize_t show_nwns_threshold(struct cpuquiet_attribute *cattr, char *buf)
+{
+	char *out = buf;
+		
+	out += sprintf(out, "%u %u %u %u %u %u %u %u\n", nwns_threshold[0], nwns_threshold[1], nwns_threshold[2], nwns_threshold[3], 
+	    nwns_threshold[4], nwns_threshold[5], nwns_threshold[6], nwns_threshold[7]);
+
+	return out - buf;
+}
+
+static ssize_t store_nwns_threshold(struct cpuquiet_attribute *cattr,
+					const char *buf, size_t count)
+{
+	int ret;
+	int i;
+    unsigned int user_nwns_threshold[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+	ret = sscanf(buf, "%u %u %u %u %u %u %u %u", &user_nwns_threshold[0], &user_nwns_threshold[1], &user_nwns_threshold[2] , &user_nwns_threshold[3],
+	    &user_nwns_threshold[4], &user_nwns_threshold[5], &user_nwns_threshold[6], &user_nwns_threshold[7]);
+
+	if (ret < 8)
+		return -EINVAL;
+
+	for (i = 0; i < 8; i++)
+		if (user_nwns_threshold[i] < 0)
+			return -EINVAL;
+
+	for (i = 0; i < 8; i++)
+		nwns_threshold[i]=user_nwns_threshold[i];
+            
+	return count;
+}
 
 CPQ_BASIC_ATTRIBUTE(sample_rate, 0644, uint);
 CPQ_BASIC_ATTRIBUTE(input_boost_enabled, 0644, uint);
 CPQ_BASIC_ATTRIBUTE(input_boost_cpus, 0644, uint);
 CPQ_BASIC_ATTRIBUTE(input_boost_duration, 0644, uint);
+CPQ_ATTRIBUTE_CUSTOM(twts_threshold, 0644, show_twts_threshold, store_twts_threshold);
+CPQ_ATTRIBUTE_CUSTOM(nwns_threshold, 0644, show_nwns_threshold, store_nwns_threshold);
 
 static struct attribute *rq_stats_attributes[] = {
 	&sample_rate_attr.attr,
 	&input_boost_enabled_attr.attr,
 	&input_boost_cpus_attr.attr,
 	&input_boost_duration_attr.attr,
-	&twts_threshold_0.attr,
-	&twts_threshold_1.attr,
-	&twts_threshold_2.attr,
-	&twts_threshold_3.attr,
-	&twts_threshold_4.attr,
-	&twts_threshold_5.attr,
-	&twts_threshold_6.attr,
-	&twts_threshold_7.attr,
-	&nwns_threshold_0.attr,
-	&nwns_threshold_1.attr,
-	&nwns_threshold_2.attr,
-	&nwns_threshold_3.attr,
-	&nwns_threshold_4.attr,
-	&nwns_threshold_5.attr,
-	&nwns_threshold_6.attr,
-	&nwns_threshold_7.attr,
+	&twts_threshold_attr.attr,
+	&nwns_threshold_attr.attr,
 	NULL,
 };
 
