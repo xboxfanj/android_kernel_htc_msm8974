@@ -55,6 +55,9 @@ static unsigned int input_boost_enabled = true;
 static bool input_boost_task_alive = false;
 static struct task_struct *input_boost_task;
 
+static bool first_call = true;
+static cputime64_t total_time;
+static cputime64_t last_time;
 DEFINE_MUTEX(rq_stats_work_lock);
 
 static bool log_hotplugging = false;
@@ -82,13 +85,10 @@ static unsigned int get_lightest_loaded_cpu_n(void)
 
 static void update_rq_stats_state(void)
 {
-	static bool first_call = true;
 	unsigned int rq_depth;
 	unsigned int nr_cpu_online;
 	unsigned int max_cpus = cpq_max_cpus();
 	unsigned int min_cpus = cpq_min_cpus();
-	static cputime64_t total_time = 0;
-	static cputime64_t last_time;
 	cputime64_t current_time;
 	cputime64_t this_time = 0;
 	int index;
@@ -451,7 +451,10 @@ static int rq_stats_start(void)
 		input_boost_task_alive = true;
 		hotplug_info("%s: input boost task created\n", __func__);
 	}
-	
+
+	first_call = true;
+	total_time = 0;
+	last_time = 0;	
 	rq_stats_state = IDLE;
 	rq_stats_work_func(NULL);
 
