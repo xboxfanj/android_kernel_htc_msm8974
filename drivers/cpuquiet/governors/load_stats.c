@@ -57,16 +57,16 @@ static bool input_boost_task_alive = false;
 static struct task_struct *input_boost_task;
 
 static bool first_call = true;
-static cputime64_t total_time;
-static cputime64_t last_time;
+static u64 total_time;
+static u64 last_time;
 
 DEFINE_MUTEX(load_stats_work_lock);
 
 struct cpu_load_data {
-	cputime64_t prev_cpu_idle;
-	cputime64_t prev_cpu_wall;
-	cputime64_t prev_cpu_iowait;
-	cputime64_t prev_cpu_nice;
+	u64 prev_cpu_idle;
+	u64 prev_cpu_wall;
+	u64 prev_cpu_iowait;
+	u64 prev_cpu_nice;
 };
 
 /* Consider IO as busy */
@@ -102,7 +102,7 @@ static inline u64 get_cpu_idle_time_jiffy(unsigned int cpu, u64 *wall)
 	return jiffies_to_usecs(idle_time);
 }
 
-static inline cputime64_t get_cpu_idle_time(unsigned int cpu, cputime64_t *wall)
+static inline u64 get_cpu_idle_time(unsigned int cpu, u64 *wall)
 {
 	u64 idle_time = get_cpu_idle_time_us(cpu, NULL);
 
@@ -114,8 +114,8 @@ static inline cputime64_t get_cpu_idle_time(unsigned int cpu, cputime64_t *wall)
 	return idle_time;
 }
 
-static inline cputime64_t get_cpu_iowait_time(unsigned int cpu,
-							cputime64_t *wall)
+static inline u64 get_cpu_iowait_time(unsigned int cpu,
+							u64 *wall)
 {
 	u64 iowait_time = get_cpu_iowait_time_us(cpu, wall);
 
@@ -128,7 +128,7 @@ static inline cputime64_t get_cpu_iowait_time(unsigned int cpu,
 static unsigned int calc_cur_load(unsigned int cpu)
 {
 	struct cpu_load_data *pcpu = &per_cpu(cpuload, cpu);
-	cputime64_t cur_wall_time, cur_idle_time, cur_iowait_time;
+	u64 cur_wall_time, cur_idle_time, cur_iowait_time;
 	unsigned int idle_time, wall_time, iowait_time;
 
 	cur_idle_time = get_cpu_idle_time(cpu, &cur_wall_time);
@@ -201,8 +201,8 @@ static void update_load_stats_state(void)
 	unsigned int nr_cpu_online;
 	unsigned int max_cpus = cpq_max_cpus();
 	unsigned int min_cpus = cpq_min_cpus();
-	cputime64_t current_time;
-	cputime64_t this_time = 0;
+	u64 current_time;
+	u64 this_time = 0;
 	int index;
 		
 	if (load_stats_state == DISABLED)

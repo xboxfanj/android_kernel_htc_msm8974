@@ -56,8 +56,8 @@ static bool input_boost_task_alive = false;
 static struct task_struct *input_boost_task;
 
 static bool first_call = true;
-static cputime64_t total_time;
-static cputime64_t last_time;
+static u64 total_time;
+static u64 last_time;
 DEFINE_MUTEX(rq_stats_work_lock);
 
 static bool log_hotplugging = false;
@@ -89,8 +89,8 @@ static void update_rq_stats_state(void)
 	unsigned int nr_cpu_online;
 	unsigned int max_cpus = cpq_max_cpus();
 	unsigned int min_cpus = cpq_min_cpus();
-	cputime64_t current_time;
-	cputime64_t this_time = 0;
+	u64 current_time;
+	u64 this_time = 0;
 	int index;
 		
 	if (rq_stats_state == DISABLED)
