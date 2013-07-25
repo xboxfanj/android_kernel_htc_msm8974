@@ -11,6 +11,7 @@
 #define __ARM_KGDB_H__
 
 #include <linux/ptrace.h>
+#include <asm/opcodes.h>
 
 #define BREAK_INSTR_SIZE	4
 #define GDB_BREAKINST		0xef9f0001
@@ -22,7 +23,7 @@
 
 static inline void arch_kgdb_breakpoint(void)
 {
-	asm(".word 0xe7ffdeff");
+	asm(__inst_arm(0xe7ffdeff));
 }
 
 extern void kgdb_handle_bus_error(void);
