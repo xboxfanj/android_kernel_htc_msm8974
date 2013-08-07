@@ -542,8 +542,7 @@ static int load_stats_start(void)
 	if (err)
 		return err;
 
-	load_stats_wq = alloc_workqueue("cpuquiet-load_stats",
-			WQ_UNBOUND | WQ_MEM_RECLAIM | WQ_HIGHPRI, 1);
+	load_stats_wq = alloc_workqueue("cpuquiet-load_stats", WQ_HIGHPRI, 0);
 	if (!load_stats_wq)
 		return -ENOMEM;
 

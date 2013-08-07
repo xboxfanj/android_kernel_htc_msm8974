@@ -430,8 +430,7 @@ static int rq_stats_start(void)
 	if (err)
 		return err;
 
-	rq_stats_wq = alloc_workqueue("cpuquiet-rq_stats",
-			WQ_UNBOUND | WQ_MEM_RECLAIM | WQ_HIGHPRI, 1);
+	rq_stats_wq = alloc_workqueue("cpuquiet-rq_stats", WQ_HIGHPRI, 0);
 	if (!rq_stats_wq)
 		return -ENOMEM;
 
