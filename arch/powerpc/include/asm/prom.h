@@ -36,8 +36,7 @@ void of_parse_dma_window(struct device_node *dn, const void *dma_window_prop,
 
 extern void kdump_move_device_tree(void);
 
-struct device_node *of_get_cpu_node(int cpu, unsigned int *thread);
-
+/* cache lookup */
 struct device_node *of_find_next_cache_node(struct device_node *np);
 
 #ifdef CONFIG_NUMA
