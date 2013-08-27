@@ -184,6 +184,7 @@ static inline bool system_entering_hibernation(void) { return false; }
 #define PM_POST_SUSPEND		0x0004 
 #define PM_RESTORE_PREPARE	0x0005 
 #define PM_POST_RESTORE		0x0006 
+#define PM_USERSPACE_FROZEN	0x0007 /* Userspace frozen */
 
 extern struct mutex pm_mutex;
 
