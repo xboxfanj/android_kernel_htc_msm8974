@@ -224,6 +224,10 @@
 			qcom,stored-batt-update-time= <(-1)>;
 			qcom,store-batt-data-soc-thre = <100>;
 
+			qcom,batt-pres-status@1208 {
+				reg = <0x1208 0x1>;
+			};
+
 			qcom,bms-iadc@3800 {
 				reg = <0x3800 0x100>;
 			};
