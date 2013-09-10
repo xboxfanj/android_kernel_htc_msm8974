@@ -25,6 +25,7 @@
 // from cpuquiet.c
 extern unsigned int cpq_max_cpus(void);
 extern unsigned int cpq_min_cpus(void);
+extern bool cpq_is_suspended(void);
 
 typedef enum {
 	DISABLED,
@@ -402,7 +403,7 @@ static void rq_stats_device_free(void)
 
 static void load_stats_touch_event(void)
 {
-	if (input_boost_enabled && !input_boost_running){
+	if (!cpq_is_suspended() && input_boost_enabled && !input_boost_running){
 		if (input_boost_task_alive)
 			wake_up_process(input_boost_task);
 		
