@@ -14,10 +14,14 @@
 #include <linux/compiler.h>
 #include <linux/rbtree.h>
 
-static const int read_expire = HZ / 2;  
-static const int write_expire = 5 * HZ; 
-static const int writes_starved = 2;    
-static const int fifo_batch = 16;       
+/*
+ * See Documentation/block/deadline-iosched.txt
+ */
+static const int read_expire = HZ / 2;  /* max time before a read is submitted. */
+static const int write_expire = 5 * HZ; /* ditto for writes, these limits are SOFT! */
+static const int writes_starved = 2;    /* max times reads can starve a write */
+static const int fifo_batch = 1;       /* # of sequential requests treated as one
+				     by the above parameters. For throughput. */
 
 struct deadline_data {
 
