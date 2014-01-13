@@ -54,18 +54,27 @@ struct bio {
 	struct bio_vec		bi_inline_vecs[0];
 };
 
-#define BIO_UPTODATE	0	
-#define BIO_RW_BLOCK	1	
-#define BIO_EOF		2	
-#define BIO_SEG_VALID	3	
-#define BIO_CLONED	4	
-#define BIO_BOUNCED	5	
-#define BIO_USER_MAPPED 6	
-#define BIO_EOPNOTSUPP	7	
-#define BIO_NULL_MAPPED 8	
-#define BIO_FS_INTEGRITY 9	
-#define BIO_QUIET	10	
-#define BIO_MAPPED_INTEGRITY 11
+/*
+ * bio flags
+ */
+#define BIO_UPTODATE	0	/* ok after I/O completion */
+#define BIO_RW_BLOCK	1	/* RW_AHEAD set, and read/write would block */
+#define BIO_EOF		2	/* out-out-bounds error */
+#define BIO_SEG_VALID	3	/* bi_phys_segments valid */
+#define BIO_CLONED	4	/* doesn't own data */
+#define BIO_BOUNCED	5	/* bio is a bounce bio */
+#define BIO_USER_MAPPED 6	/* contains user pages */
+#define BIO_EOPNOTSUPP	7	/* not supported */
+#define BIO_NULL_MAPPED 8	/* contains invalid user pages */
+#define BIO_FS_INTEGRITY 9	/* fs owns integrity data, not block layer */
+#define BIO_QUIET	10	/* Make BIO Quiet */
+#define BIO_MAPPED_INTEGRITY 11/* integrity metadata has been remapped */
+/*
+ * Added for Req based dm which need to perform post processing. This flag
+ * ensures blk_update_request does not free the bios or request, this is done
+ * at the dm level
+ */
+#define BIO_DONTFREE 12
 #define bio_flagged(bio, flag)	((bio)->bi_flags & (1 << (flag)))
 
 #define BIO_POOL_BITS		(4)
