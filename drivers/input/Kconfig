@@ -165,6 +165,12 @@ config INPUT_APMPOWER
 	  To compile this driver as a module, choose M here: the
 	  module will be called apm-power.
 
+config INPUT_MEDIATOR
+	bool "Event mediator"
+	help
+	  Clients can register to this mediator using a 
+	  simple 2-level priority to get input events
+
 config INPUT_KEYRESET
 	tristate "Reset key"
 	depends on INPUT
