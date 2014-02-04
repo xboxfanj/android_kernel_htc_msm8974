@@ -35,7 +35,6 @@ static bool screen_off_cap = true;
 #ifdef CONFIG_HAS_EARLYSUSPEND
 struct early_suspend cpufreq_early_suspender;
 #endif
-static bool screen_off_cap_active = false;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void cpufreq_early_suspend(struct early_suspend *h)
