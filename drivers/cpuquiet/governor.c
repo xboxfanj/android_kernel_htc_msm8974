@@ -166,6 +166,20 @@ void cpuquiet_touch_event(void)
 		cpuquiet_curr_governor->touch_event_notification();
 }
 
+#ifdef CONFIG_INPUT_MEDIATOR
+static void cpuquiet_input_event(struct input_handle *handle, unsigned int type,
+		unsigned int code, int value) {
+	if (type == EV_SYN && code == SYN_REPORT) {
+		cpuquiet_touch_event();
+	}
+}
+
+static struct input_mediator_handler cpuquiet_input_mediator_handler = {
+	.event = cpuquiet_input_event,
+	};
+
+#else
+
 static void cpuquiet_input_event(struct input_handle *handle, unsigned int type,
 		unsigned int code, int value) {
 	if (type == EV_SYN && code == SYN_REPORT) {
@@ -235,9 +249,15 @@ static struct input_handler cpuquiet_input_handler = {
 	.id_table = cpuquiet_ids, 
 	};
 
+#endif
 static int cpuquiet_input_init(void)
 {
+#ifdef CONFIG_INPUT_MEDIATOR
+	input_register_mediator_primary(&cpuquiet_input_mediator_handler);
+	return 0;
+#else
 	return input_register_handler(&cpuquiet_input_handler);
+#endif
 }
 
 late_initcall(cpuquiet_input_init);
