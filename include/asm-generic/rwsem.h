@@ -1,5 +1,5 @@
-#ifndef _ASM_POWERPC_RWSEM_H
-#define _ASM_POWERPC_RWSEM_H
+#ifndef _ASM_GENERIC_RWSEM_H
+#define _ASM_GENERIC_RWSEM_H
 
 #ifndef _LINUX_RWSEM_H
 #error "Please don't include <asm/rwsem.h> directly, use <linux/rwsem.h> instead."
@@ -7,8 +7,16 @@
 
 #ifdef __KERNEL__
 
+/*
+ * R/W semaphores originally for PPC using the stuff in lib/rwsem.c.
+ * Adapted largely from include/asm-i386/rwsem.h
+ * by Paul Mackerras <paulus@samba.org>.
+ */
 
-#ifdef CONFIG_PPC64
+/*
+ * the semaphore definition
+ */
+#ifdef CONFIG_64BIT
 # define RWSEM_ACTIVE_MASK		0xffffffffL
 #else
 # define RWSEM_ACTIVE_MASK		0x0000ffffL
@@ -99,5 +107,5 @@ static inline long rwsem_atomic_update(long delta, struct rw_semaphore *sem)
 	return atomic_long_add_return(delta, (atomic_long_t *)&sem->count);
 }
 
-#endif	
-#endif	
+#endif	/* __KERNEL__ */
+#endif	/* _ASM_GENERIC_RWSEM_H */
