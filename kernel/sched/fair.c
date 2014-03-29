@@ -789,6 +789,39 @@ static inline void update_entity_shares_tick(struct cfs_rq *cfs_rq)
 }
 #endif 
 
+static inline unsigned int task_load(struct task_struct *p)
+{
+	return p->ravg.demand;
+}
+
+static inline unsigned int max_task_load(void)
+{
+	return sched_ravg_window;
+}
+
+/* Return task demand in percentage scale */
+unsigned int pct_task_load(struct task_struct *p)
+{
+	unsigned int load;
+
+	load = div64_u64((u64)task_load(p) * 100, (u64)max_task_load());
+
+	return load;
+}
+
+void init_new_task_load(struct task_struct *p)
+{
+	int i;
+	u64 wallclock = sched_clock();
+
+	p->ravg.sum			= 0;
+	p->ravg.demand			= 0;
+	p->ravg.window_start		= wallclock;
+	p->ravg.mark_start		= wallclock;
+	for (i = 0; i < RAVG_HIST_SIZE; ++i)
+		p->ravg.sum_history[i] = 0;
+}
+
 static void enqueue_sleeper(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 #ifdef CONFIG_SCHEDSTATS
@@ -2452,6 +2485,7 @@ struct lb_env {
 };
 
 static DEFINE_PER_CPU(bool, dbs_boost_needed);
+static DEFINE_PER_CPU(int, dbs_boost_load_moved);
 
 static void move_task(struct task_struct *p, struct lb_env *env)
 {
@@ -2524,7 +2558,14 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 	return 1;
 }
 
-static int move_one_task(struct lb_env *env, int *total_run_moved)
+/*
+ * move_one_task tries to move exactly one task from busiest to this_rq, as
+ * part of active balancing operations within "domain".
+ * Returns 1 if successful and 0 otherwise.
+ *
+ * Called with both runqueues locked.
+ */
+static int move_one_task(struct lb_env *env)
 {
 	struct task_struct *p, *n;
 
@@ -2537,9 +2578,7 @@ static int move_one_task(struct lb_env *env, int *total_run_moved)
 
 		move_task(p, env);
 		schedstat_inc(env->sd, lb_gained[env->idle]);
-		if (sysctl_sched_ravg_window)
-			*total_run_moved += div64_u64((u64)p->se.ravg.demand *
-					100, (u64)(sysctl_sched_ravg_window));
+		per_cpu(dbs_boost_load_moved, env->dst_cpu) += pct_task_load(p);
 
 		return 1;
 	}
@@ -2550,7 +2589,14 @@ static unsigned long task_h_load(struct task_struct *p);
 
 static const unsigned int sched_nr_migrate_break = 32;
 
-static int move_tasks(struct lb_env *env, int *total_run_moved)
+/*
+ * move_tasks tries to move up to load_move weighted load from busiest to
+ * this_rq, as part of a balancing operation within domain "sd".
+ * Returns 1 if successful and 0 otherwise.
+ *
+ * Called with both runqueues locked.
+ */
+static int move_tasks(struct lb_env *env)
 {
 	struct list_head *tasks = &env->src_rq->cfs_tasks;
 	struct task_struct *p;
@@ -2592,9 +2638,7 @@ static int move_tasks(struct lb_env *env, int *total_run_moved)
 		move_task(p, env);
 		pulled++;
 		env->load_move -= load;
-		if (sysctl_sched_ravg_window)
-			*total_run_moved += div64_u64((u64)p->se.ravg.demand *
-					100, (u64)(sysctl_sched_ravg_window));
+		per_cpu(dbs_boost_load_moved, env->dst_cpu) += pct_task_load(p);
 
 #ifdef CONFIG_PREEMPT
 		if (env->idle == CPU_NEWLY_IDLE)
@@ -3381,8 +3425,7 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 			struct sched_domain *sd, enum cpu_idle_type idle,
 			int *balance)
 {
-	int ld_moved, active_balance = 0;
-	int total_run_moved = 0;
+	int ld_moved, cur_ld_moved, active_balance = 0;
 	struct sched_group *group;
 	unsigned long imbalance;
 	struct rq *busiest = NULL;
@@ -3399,6 +3442,7 @@ static int load_balance(int this_cpu, struct rq *this_rq,
 
 	cpumask_copy(cpus, cpu_active_mask);
 
+	per_cpu(dbs_boost_load_moved, this_cpu) = 0;
 	schedstat_inc(sd, lb_count[idle]);
 
 redo:
@@ -3436,7 +3480,13 @@ more_balance:
 		double_rq_lock(this_rq, busiest);
 		if (!env.loop)
 			update_h_load(env.src_cpu);
-		ld_moved += move_tasks(&env, &total_run_moved);
+
+		/*
+		 * cur_ld_moved - load moved in current iteration
+		 * ld_moved     - cumulative load moved across iterations
+		 */
+		cur_ld_moved = move_tasks(&env);
+		ld_moved += cur_ld_moved;
 		double_rq_unlock(this_rq, busiest);
 		local_irq_restore(flags);
 
@@ -3490,13 +3540,18 @@ more_balance:
 	} else {
 		sd->nr_balance_failed = 0;
 		if (per_cpu(dbs_boost_needed, this_cpu)) {
-		struct migration_notify_data mnd;
-			per_cpu(dbs_boost_needed, this_cpu) = false;
+			struct migration_notify_data mnd;
+
 			mnd.src_cpu = cpu_of(busiest);
 			mnd.dest_cpu = this_cpu;
-			mnd.load = total_run_moved;
+			mnd.load = per_cpu(dbs_boost_load_moved, this_cpu);
+			if (mnd.load > 100)
+				mnd.load = 100;
 			atomic_notifier_call_chain(&migration_notifier_head,
 						   0, (void *)&mnd);
+			per_cpu(dbs_boost_needed, this_cpu) = false;
+			per_cpu(dbs_boost_load_moved, this_cpu) = 0;
+
 		}
 	}
 	if (likely(!active_balance)) {
@@ -3580,13 +3635,14 @@ static int active_load_balance_cpu_stop(void *data)
 	struct rq *busiest_rq = data;
 	int busiest_cpu = cpu_of(busiest_rq);
 	int target_cpu = busiest_rq->push_cpu;
-	int total_run_moved = 0;
 	struct rq *target_rq = cpu_rq(target_cpu);
 	struct sched_domain *sd;
 
 	raw_spin_lock_irq(&busiest_rq->lock);
 
-	
+	per_cpu(dbs_boost_load_moved, target_cpu) = 0;
+
+	/* make sure the requested cpu hasn't gone down in the meantime */
 	if (unlikely(busiest_cpu != smp_processor_id() ||
 		     !busiest_rq->active_balance))
 		goto out_unlock;
@@ -3620,7 +3676,7 @@ static int active_load_balance_cpu_stop(void *data)
 
 		schedstat_inc(sd, alb_count);
 
-		if (move_one_task(&env, &total_run_moved))
+		if (move_one_task(&env))
 			schedstat_inc(sd, alb_pushed);
 		else
 			schedstat_inc(sd, alb_failed);
@@ -3631,13 +3687,18 @@ out_unlock:
 	busiest_rq->active_balance = 0;
 	raw_spin_unlock_irq(&busiest_rq->lock);
 	if (per_cpu(dbs_boost_needed, target_cpu)) {
-	struct migration_notify_data mnd;
-		per_cpu(dbs_boost_needed, target_cpu) = false;
+		struct migration_notify_data mnd;
+
 		mnd.src_cpu = cpu_of(busiest_rq);
 		mnd.dest_cpu = target_cpu;
-		mnd.load = total_run_moved;
+		mnd.load = per_cpu(dbs_boost_load_moved, target_cpu);
+		if (mnd.load > 100)
+			mnd.load = 100;
 		atomic_notifier_call_chain(&migration_notifier_head,
 					   0, (void *)&mnd);
+
+		per_cpu(dbs_boost_needed, target_cpu) = false;
+		per_cpu(dbs_boost_load_moved, target_cpu) = 0;
 	}
 	return 0;
 }
