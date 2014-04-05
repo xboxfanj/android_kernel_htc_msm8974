@@ -56,12 +56,24 @@
 
 #endif
 
+#ifndef UNUSED_PARAM
+# if defined(__GNUC__)
+#  define UNUSED_PARAM(_parm) _parm  __attribute__((__unused__))
+# else
+#  define UNUSED_PARAM(_parm) _parm
+# endif
+#endif
+
+#ifndef UNUSED_TYPE
+#  define UNUSED_TYPE(_parm) UNUSED_PARAM(_parm)
+#endif
+
 #ifdef __COVERITY__
 #define ASSERT_ON_COMPILE(e) ASSERT(e)
 #else
 #define ASSERT_ON_COMPILE(e) do {					\
 	enum { AssertOnCompileMisused = ((e) ? 1 : -1) };		\
-	typedef char AssertOnCompileFailed[AssertOnCompileMisused];	\
+	UNUSED_TYPE(typedef char AssertOnCompileFailed[AssertOnCompileMisused]);\
 } while (0)
 #endif
 
