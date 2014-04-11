@@ -37,6 +37,24 @@
 #define QPNP_VIB_VTG_SET_MASK		0x1F
 #define QPNP_VIB_LOGIC_SHIFT		4
 
+static int reduce_vib = 0;
+
+static int __init read_vib_rd(char *vib_rd)
+{
+        long arg;
+	int err;
+
+        err =  strict_strtol(vib_rd, 0, &arg);
+        if (err)
+                reduce_vib  = 0;
+
+
+        reduce_vib = arg;
+        printk("elementalx: reduce vibration=%d\n", reduce_vib);
+        return 0;
+}
+__setup("vib_rd=", read_vib_rd);
+
 struct qpnp_vib {
 	struct spmi_device *spmi;
 	struct hrtimer vib_timer;
@@ -324,7 +342,10 @@ static int __devinit qpnp_vibrator_probe(struct spmi_device *spmi)
 	else
 		vib->vtg_level = QPNP_VIB_DEFAULT_VTG_LVL;
 
-	vib->vtg_level /= 100;
+        if (reduce_vib == 1)
+                vib->vtg_level = 24;
+        else
+                vib->vtg_level /= 100;
 
 	vib_resource = spmi_get_resource(spmi, 0, IORESOURCE_MEM, 0);
 	if (!vib_resource) {
