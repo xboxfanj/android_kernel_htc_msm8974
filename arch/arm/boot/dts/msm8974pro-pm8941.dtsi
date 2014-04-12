@@ -40,25 +40,25 @@
 };
 
 &krait0_vreg {
-		regulator-max-microvolt = <1120000>;
+		regulator-max-microvolt = <1250000>;
 		qcom,ldo-delta-voltage = <12500>;
 		qcom,ldo-disable;
 };
 
 &krait1_vreg {
-		regulator-max-microvolt = <1120000>;
+		regulator-max-microvolt = <1250000>;
 		qcom,ldo-delta-voltage = <12500>;
 		qcom,ldo-disable;
 };
 
 &krait2_vreg {
-		regulator-max-microvolt = <1120000>;
+		regulator-max-microvolt = <1250000>;
 		qcom,ldo-delta-voltage = <12500>;
 		qcom,ldo-disable;
 };
 
 &krait3_vreg {
-		regulator-max-microvolt = <1120000>;
+		regulator-max-microvolt = <1250000>;
 		qcom,ldo-delta-voltage = <12500>;
 		qcom,ldo-disable;
 };
