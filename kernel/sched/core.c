@@ -4,6 +4,7 @@
  *  Kernel scheduler and related syscalls
  *
  *  Copyright (C) 1991-2002  Linus Torvalds
+ *  Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
  *
  *  1996-12-23  Modified by Dave Grothe to fix bugs in semaphores and
  *		make semaphores SMP safe
@@ -986,9 +987,10 @@ unsigned long wait_task_inactive(struct task_struct *p, long match_state)
 		rq = task_rq(p);
 
 		while (task_running(rq, p)) {
-			if (match_state && unlikely(p->state != match_state))
+			if (match_state && unlikely(cpu_relaxed_read_long
+				(&(p->state)) != match_state))
 				return 0;
-			cpu_relax();
+			cpu_read_relax();
 		}
 
 		rq = task_rq_lock(p, &flags);
@@ -1314,12 +1316,12 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 		goto stat;
 
 #ifdef CONFIG_SMP
-	while (p->on_cpu) {
+	while (cpu_relaxed_read(&(p->on_cpu)))
 #ifdef __ARCH_WANT_INTERRUPTS_ON_CTXSW
 		if (ttwu_activate_remote(p, wake_flags))
 			goto stat;
 #else
-		cpu_relax();
+		cpu_read_relax();
 #endif
 	}
 	smp_rmb();
