@@ -283,7 +283,7 @@ static bool s2w_switch_changed = false;
 static int s2s_switch = 0;
 static int dt2w_switch = 0, dt2w_switch_temp = 0;
 static bool dt2w_switch_changed = false;
-static int gestures_switch = 0, gestures_switch_temp = 1;
+static int gestures_switch = 0, gestures_switch_temp = 0;
 static bool gestures_switch_changed = false;
 static int pocket_detect = 0;
 static int vib_strength = 20;
