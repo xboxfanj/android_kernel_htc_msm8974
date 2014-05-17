@@ -1475,8 +1475,7 @@ static void __ref disable_msm_thermal(void)
 	uint32_t cpu = 0;
 
 	
-	cancel_delayed_work(&check_temp_work);
-	flush_scheduled_work();
+	cancel_delayed_work_sync(&check_temp_work);
 
 	get_online_cpus();
 	for_each_possible_cpu(cpu) {
