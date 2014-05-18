@@ -891,6 +891,8 @@ static int get_proximity(struct device *dev, struct device_attribute *attr, char
 }
 
 #ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_WAKE_GESTURES
+extern int cam_switch;
+
 static void sensor_enable(int sensors_id, int enabled)
 {
 	u8 i;
@@ -934,12 +936,13 @@ static void sensor_enable(int sensors_id, int enabled)
 
 void proximity_set(int enabled)
 {
-//	if (enabled) {
-//		sensor_enable(Gesture_Motion_HIDI, 0);
-//		sensor_enable(Gesture_Motion, 0);
-//	}
-
 	sensor_enable(Proximity, enabled);
+}
+
+void camera_volume_button_disable(void)
+{
+	sensor_enable(Gesture_Motion_HIDI, 0);
+	sensor_enable(Gesture_Motion, 0);
 }
 
 int check_pocket(void)
@@ -952,8 +955,6 @@ int check_pocket(void)
 
 	return ret;
 }
-
-
 #endif
 
 static int get_proximity_polling(struct device *dev, struct device_attribute *attr, char *buf){

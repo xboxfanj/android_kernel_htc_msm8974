@@ -287,9 +287,11 @@ static int gestures_switch = 0, gestures_switch_temp = 0;
 static bool gestures_switch_changed = false;
 static int pocket_detect = 0;
 static int vib_strength = 20;
+int cam_switch = 1;
 static int boot_mode = 1;
 
 static struct wake_lock wg_wakelock;
+extern void camera_volume_button_disable(void);
 extern void proximity_set(int enabled);
 extern int check_pocket(void);
 extern struct vib_trigger *vib_trigger;
@@ -2105,6 +2107,26 @@ static ssize_t synaptics_pocket_detect_dump(struct device *dev,
 
 static DEVICE_ATTR(pocket_detect, 0666,
 	synaptics_pocket_detect_show, synaptics_pocket_detect_dump);
+
+static ssize_t synaptics_camera_gesture_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	size_t count = 0;
+	count += sprintf(buf, "%d\n", cam_switch);
+	return count;
+}
+
+static ssize_t synaptics_camera_gesture_dump(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	if (buf[0] >= '0' && buf[0] <= '1' && buf[1] == '\n')
+		if (cam_switch != buf[0] - '0')
+			cam_switch = buf[0] - '0';
+	return count;
+}
+
+static DEVICE_ATTR(camera_gesture, 0666,
+	synaptics_camera_gesture_show, synaptics_camera_gesture_dump);
 #endif
 
 enum SR_REG_STATE{
@@ -2222,7 +2244,8 @@ static int synaptics_touch_sysfs_init(void)
 		sysfs_create_file(android_touch_kobj, &dev_attr_doubletap2wake.attr) ||
 		sysfs_create_file(android_touch_kobj, &dev_attr_wake_gestures.attr) ||
 		sysfs_create_file(android_touch_kobj, &dev_attr_vib_strength.attr) ||
-		sysfs_create_file(android_touch_kobj, &dev_attr_pocket_detect.attr)
+		sysfs_create_file(android_touch_kobj, &dev_attr_pocket_detect.attr) ||
+		sysfs_create_file(android_touch_kobj, &dev_attr_camera_gesture.attr)
 #endif
 #ifdef SYN_WIRELESS_DEBUG
 		|| sysfs_create_file(android_touch_kobj, &dev_attr_enabled.attr)
@@ -2290,6 +2313,7 @@ static void synaptics_touch_sysfs_remove(void)
 	sysfs_remove_file(android_touch_kobj, &dev_attr_wake_gestures.attr);
 	sysfs_remove_file(android_touch_kobj, &dev_attr_vib_strength.attr);
 	sysfs_remove_file(android_touch_kobj, &dev_attr_pocket_detect.attr);
+	sysfs_remove_file(android_touch_kobj, &dev_attr_camera_gesture.attr);
 #endif
 	kobject_del(android_touch_kobj);
 }
@@ -4649,8 +4673,12 @@ static int synaptics_ts_suspend(struct i2c_client *client)
 #ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_WAKE_GESTURES
 	}
 
-	if (pocket_detect && !phone_call_stat && (s2w_switch || dt2w_switch || gestures_switch))
-		proximity_set(1);
+	if (s2w_switch || dt2w_switch || gestures_switch) {
+		if (pocket_detect && !phone_call_stat)
+			proximity_set(1);
+		if (!cam_switch)
+			camera_volume_button_disable();
+	}
 
 	scr_suspended = true;
 #endif
