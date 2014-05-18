@@ -3,11 +3,6 @@ PERL		= perl
 
 ifeq ($(TARGET_PREBUILT_KERNEL),)
 
-# Graphite, will work only with toolchains that has it enabled
-ifeq ($(ENABLE_GRAPHITE),true)
-export ENABLE_GRAPHITE := true
-endif
-
 KERNEL_OUT := $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ
 KERNEL_CONFIG := $(KERNEL_OUT)/.config
 ifeq ($(TARGET_KERNEL_APPEND_DTB), true)
