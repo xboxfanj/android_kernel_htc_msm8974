@@ -2,6 +2,7 @@ menu "CPUQUIET Framework"
 
 config CPUQUIET_FRAMEWORK
 	bool "Cpuquiet framework"
+	select MSM_RUN_QUEUE_STATS
 	help
 	  Cpuquiet implements pluggable policies for forcing cpu cores into a
 	  quiescent state. Appropriate policies will save power without hurting
