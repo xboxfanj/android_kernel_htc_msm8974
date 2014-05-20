@@ -265,6 +265,7 @@ static struct input_dev *smart_cover;
 #define DT2W_DELTA 230
 #define S2W_PWRKEY_DUR 60
 #define GEST_TIMEOUT 70
+#define BOOT_MODE_TIMEOUT 8000
 #define WAKE_MOTION 0x07
 #define WAKE_MOTION_HIDI 0x0b
 #define WAKE_MATRIX 0x0a
@@ -289,6 +290,7 @@ static int pocket_detect = 0;
 static int vib_strength = 20;
 int cam_switch = 1;
 static int boot_mode = 1;
+static unsigned long boot_mode_init;
 
 static struct wake_lock wg_wakelock;
 extern void camera_volume_button_disable(void);
@@ -307,7 +309,7 @@ static void report_gesture(int gest)
 {
 	struct synaptics_ts_data *ts = gl_ts;
 
-	if (!ts->cover_enable && pocket_detect && !check_pocket())
+	if (pocket_detect && !check_pocket())
 		return;
 
         pwrtrigger_time[1] = pwrtrigger_time[0];
@@ -4369,6 +4371,7 @@ static int __devinit synaptics_ts_probe(
 
 #ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_WAKE_GESTURES
 	wake_lock_init(&wg_wakelock, WAKE_LOCK_SUSPEND, "wg_wakelock");
+	boot_mode_init = jiffies;
 #endif
 
 #ifdef CONFIG_FB
@@ -4810,9 +4813,12 @@ static int fb_notifier_callback(struct notifier_block *self,
 		case FB_BLANK_UNBLANK:
 #if defined(CONFIG_SYNC_TOUCH_STATUS)
 #ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_WAKE_GESTURES
+			printk("jiffies=%lu\n", jiffies);
 			if (boot_mode || (!s2w_switch && !dt2w_switch && !gestures_switch)) {
+                               if (boot_mode)
+                                       if(jiffies - boot_mode_init > BOOT_MODE_TIMEOUT)
+						boot_mode = 0;
 #endif
-				boot_mode = 0;
 				touch_status(0);
 				if(gpio_is_valid(ts->gpio_i2c))
 				{
