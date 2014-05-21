@@ -301,8 +301,6 @@ struct kgsl_device {
 
 	int reset_counter; /* Track how many GPU core resets have occured */
 	int cff_dump_enable;
-
-	int gpu_fault_no_panic;
 };
 
 void kgsl_process_events(struct work_struct *work);
