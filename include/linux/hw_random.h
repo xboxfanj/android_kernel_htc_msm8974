@@ -30,5 +30,7 @@ struct hwrng {
 
 extern int hwrng_register(struct hwrng *rng);
 extern void hwrng_unregister(struct hwrng *rng);
+/** Feed random bits into the pool. */
+extern void add_hwgenerator_randomness(const char *buffer, size_t count, size_t entropy);
 
 #endif 
