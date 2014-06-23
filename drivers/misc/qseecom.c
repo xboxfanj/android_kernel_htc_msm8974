@@ -2456,9 +2456,10 @@ static int __qseecom_delete_saved_key(struct qseecom_dev_handle *data,
 	struct qseecom_command_scm_resp resp;
 	int ret;
 
-	if (usage != QSEOS_KM_USAGE_DISK_ENCRYPTION) {
-		pr_err("Error:: unsupported usage %d\n", usage);
-		return -EFAULT;
+	if (usage < QSEOS_KM_USAGE_DISK_ENCRYPTION ||
+		usage >= QSEOS_KM_USAGE_MAX) {
+			pr_err("Error:: unsupported usage %d\n", usage);
+			return -EFAULT;
 	}
 
 	memcpy(ireq.key_id, key_id, QSEECOM_KEY_ID_SIZE);
