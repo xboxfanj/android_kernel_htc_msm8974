@@ -86,13 +86,6 @@
 #include <linux/android_ediagpmem.h>
 #endif
 
-#if defined(CONFIG_LCD_KCAL)
-#include <linux/module.h>
-#include "../../../drivers/video/msm/mdss/mdss_fb.h"
-#include <mach/htc_lcd_kcal.h>
-extern int update_preset_lcdc_lut(void);
-#endif
-
 #if defined(CONFIG_FB_MSM_MDSS_HDMI_MHL_SII8240_SII8558) && defined(CONFIG_HTC_MHL_DETECTION)
 #include "../../../drivers/video/msm/mdss/sii8240_8558/mhl_platform.h"
 #endif
@@ -518,54 +511,6 @@ static void __init htc_8974_early_memory(void)
 	of_scan_flat_dt(dt_scan_for_memory_hole, htc_8974_reserve_table);
 }
 
-
-#if defined(CONFIG_LCD_KCAL)
-extern int g_kcal_r;
-extern int g_kcal_g;
-extern int g_kcal_b;
-
-int kcal_set_values(int kcal_r, int kcal_g, int kcal_b)
-{
-g_kcal_r = kcal_r;
-g_kcal_g = kcal_g;
-g_kcal_b = kcal_b;
-return 0;
-}
-
-static int kcal_get_values(int *kcal_r, int *kcal_g, int *kcal_b)
-{
-*kcal_r = g_kcal_r;
-*kcal_g = g_kcal_g;
-*kcal_b = g_kcal_b;
-return 0;
-}
-
-static int kcal_refresh_values(void)
-{
-return update_preset_lcdc_lut();
-}
-
-static struct kcal_platform_data kcal_pdata = {
-.set_values = kcal_set_values,
-.get_values = kcal_get_values,
-.refresh_display = kcal_refresh_values
-};
-
-static struct platform_device kcal_platrom_device = {
-.name = "kcal_ctrl",
-.dev = {
-.platform_data = &kcal_pdata,
-}
-};
-
-void __init htc_add_lcd_kcal_devices(void)
-{
-pr_info (" LCD_KCAL_DEBUG : %s \n", __func__);
-platform_device_register(&kcal_platrom_device);
-};
-#endif
-
-
 #if defined(CONFIG_HTC_BATT_8960)
 #ifdef CONFIG_HTC_PNPMGR
 extern int pnpmgr_battery_charging_enabled(int charging_enabled);
@@ -686,9 +631,6 @@ void __init htc_8974_add_drivers(void)
 #endif
 #ifdef CONFIG_HTC_POWER_DEBUG
 	htc_cpu_usage_register();
-#endif
-#if defined(CONFIG_LCD_KCAL)
-	htc_add_lcd_kcal_devices();
 #endif
 }
 
