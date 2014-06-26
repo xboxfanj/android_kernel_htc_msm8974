@@ -171,6 +171,7 @@ void unlock_policy_rwsem_write(int cpu);
 
 #define CPUFREQ_RELATION_L 0  
 #define CPUFREQ_RELATION_H 1  
+#define CPUFREQ_RELATION_C 2
 
 struct freq_attr;
 
