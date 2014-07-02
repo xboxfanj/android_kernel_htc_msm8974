@@ -126,7 +126,7 @@ static unsigned int ksm_thread_pages_to_scan = 100;
 static unsigned int ksm_thread_sleep_millisecs = 20;
 
 /* Boolean to indicate whether to use deferred timer or not */
-static bool use_deferred_timer;
+static bool use_deferred_timer = true;
 
 #ifdef CONFIG_KSM_HTC_POLICY
 static unsigned int ksm_enable_smart_scan = 1;
