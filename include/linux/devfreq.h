@@ -89,6 +89,7 @@ struct devfreq {
 	unsigned int *trans_table;
 	unsigned long *time_in_state;
 	unsigned long last_stat_updated;
+	bool suspended;
 };
 
 #if defined(CONFIG_PM_DEVFREQ)
