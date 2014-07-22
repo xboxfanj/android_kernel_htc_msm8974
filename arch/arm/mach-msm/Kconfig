@@ -3265,3 +3265,8 @@ config HAS_MACH_MEMUTILS
 	bool "Motorola MSM memcpy enhancements"
 	help
 	Faster memcpy performance for Krait
+
+config HTC_DEBUG_RBCPR_8226
+    depends on ARCH_MSM8226
+    default n
+    bool "HTC RBCPR debug"
