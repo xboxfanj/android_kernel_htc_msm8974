@@ -151,6 +151,10 @@ initrd_phys-$(CONFIG_ARCH_FSM9XXX)	:= 0x12000000
 	htc_dtb-$(CONFIG_ARCH_MSM8974)  += msm8974pro-ab-pm8941-m8whl-xe.dtb
 	htc_dtb-$(CONFIG_ARCH_MSM8974)  += msm8974pro-ab-pm8941-m8whl-xf.dtb
 
+ifeq ($(CONFIG_MACH_MEM_UL), y)
+	htc_dtb-$(CONFIG_ARCH_MSM8226)  += msm8926-memul.dtb
+endif
+
 ifeq ($(CONFIG_MACH_A5), y)
 	htc_dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-a5ul.dtb
 	htc_dtb-$(CONFIG_ARCH_MSM8226)	+= msm8926-a5dwg.dtb
