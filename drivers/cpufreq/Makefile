@@ -21,6 +21,7 @@ obj-$(CONFIG_CPU_FREQ_GOV_INTERACTIVEX)	+= cpufreq_interactivex.o
 obj-$(CONFIG_CPU_FREQ_GOV_INTELLIDEMAND)+= cpufreq_intellidemand.o
 obj-$(CONFIG_CPU_FREQ_GOV_HYPER)	+= cpufreq_hyper.o
 obj-$(CONFIG_CPU_FREQ_GOV_DANCEDANCE)	+= cpufreq_dancedance.o
+obj-$(CONFIG_CPU_FREQ_GOV_BLUACTIVE)+= cpufreq_bluactive.o
 
 # CPUfreq cross-arch helpers
 obj-$(CONFIG_CPU_FREQ_TABLE)		+= freq_table.o
