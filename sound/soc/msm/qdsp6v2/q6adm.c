@@ -32,6 +32,7 @@
 #define INVALID_COPP_ID 0xFF
 #define ADM_GET_PARAMETER_LENGTH  (4096 - APR_HDR_SIZE - 2 * sizeof(uint32_t))
 
+#define ULL_SUPPORTED_BITS_PER_SAMPLE 16
 #define ULL_SUPPORTED_SAMPLE_RATE 48000
 #define ULL_MAX_SUPPORTED_CHANNEL 2
 
@@ -1206,12 +1207,14 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology,
 
 		open.topology_id = topology;
 		if ((open.topology_id == VPM_TX_SM_ECNS_COPP_TOPOLOGY) ||
-			(open.topology_id == VPM_TX_DM_FLUENCE_COPP_TOPOLOGY))
+			(open.topology_id == VPM_TX_DM_FLUENCE_COPP_TOPOLOGY) ||
+			(open.topology_id == VPM_TX_DM_RFECNS_COPP_TOPOLOGY))
 				rate = 16000;
 
 		if (perf_mode == ULTRA_LOW_LATENCY_PCM_MODE) {
 			open.topology_id = NULL_COPP_TOPOLOGY;
 			rate = ULL_SUPPORTED_SAMPLE_RATE;
+			open.bit_width = ULL_SUPPORTED_BITS_PER_SAMPLE;
 			if(channel_mode > ULL_MAX_SUPPORTED_CHANNEL)
 				channel_mode = ULL_MAX_SUPPORTED_CHANNEL;
 #ifdef CONFIG_HD_AUDIO
