@@ -602,9 +602,7 @@ static void cpufreq_interactive_idle_start(void)
 	now = ktime_to_us(ktime_get());
 	pending = timer_pending(&pcpu->cpu_timer);
 
-	if (pcpu->target_freq > pcpu->policy->min ||
-	    (pcpu->target_freq == pcpu->policy->min &&
-	    now < boostpulse_endtime)) {
+	if (pcpu->target_freq >= pcpu->policy->min) {
 		/*
 		 * Entering idle while not at lowest speed.  On some
 		 * platforms this can hold the other CPU(s) at that speed
@@ -1318,8 +1316,6 @@ static int cpufreq_governor_bluactive(struct cpufreq_policy *policy,
 				pcpu->target_freq = policy->max;
 			else if (policy->min > pcpu->target_freq) {
 				pcpu->target_freq = policy->min;
-				boostpulse_endtime = ktime_to_us(ktime_get()) +
-					boostpulse_duration_val;
 				pcpu->floor_freq = policy->min;
 				pcpu->floor_validate_time = ktime_to_us(ktime_get());
 			}
