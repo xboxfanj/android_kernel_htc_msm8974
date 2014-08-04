@@ -75,10 +75,24 @@
 #define NUM_RCU_NODES (RCU_SUM - NR_CPUS)
 
 struct rcu_dynticks {
-	long long dynticks_nesting; 
-				    
-	int dynticks_nmi_nesting;   
-	atomic_t dynticks;	    
+	long long dynticks_nesting; /* Track irq/process nesting level. */
+				    /* Process level is worth LLONG_MAX/2. */
+	int dynticks_nmi_nesting;   /* Track NMI nesting level. */
+	atomic_t dynticks;	    /* Even value for idle, else odd. */
+#ifdef CONFIG_RCU_FAST_NO_HZ
+	int dyntick_drain;	    /* Prepare-for-idle state variable. */
+	unsigned long dyntick_holdoff;
+				    /* No retries for the jiffy of failure. */
+	struct timer_list idle_gp_timer;
+				    /* Wake up CPU sleeping with callbacks. */
+	unsigned long idle_gp_timer_expires;
+				    /* When to wake up CPU (for repost). */
+	bool idle_first_pass;	    /* First pass of attempt to go idle? */
+	unsigned long nonlazy_posted;
+				    /* # times non-lazy CBs posted to CPU. */
+	unsigned long nonlazy_posted_snap;
+				    /* idle-period nonlazy_posted snapshot. */
+#endif /* #ifdef CONFIG_RCU_FAST_NO_HZ */
 };
 
 #define RCU_KTHREAD_STOPPED  0
@@ -292,39 +306,50 @@ struct rcu_state {
 	
 
 	u8	fqs_state ____cacheline_internodealigned_in_smp;
-						
-	u8	fqs_active;			
-						
-	u8	fqs_need_gp;			
-						
-						
-						
-						
-	u8	boost;				
-	unsigned long gpnum;			
-	unsigned long completed;		
+						/* Force QS state. */
+	u8	fqs_active;			/* force_quiescent_state() */
+						/*  is running. */
+	u8	fqs_need_gp;			/* A CPU was prevented from */
+						/*  starting a new grace */
+						/*  period because */
+						/*  force_quiescent_state() */
+						/*  was running. */
+	u8	boost;				/* Subject to priority boost. */
+	unsigned long gpnum;			/* Current gp number. */
+	unsigned long completed;		/* # of last completed gp. */
 
-	
+	/* End of fields guarded by root rcu_node's lock. */
 
-	raw_spinlock_t onofflock;		
-						
-	raw_spinlock_t fqslock;			
-						
-	unsigned long jiffies_force_qs;		
-						
-	unsigned long n_force_qs;		
-						
-	unsigned long n_force_qs_lh;		
-						
-	unsigned long n_force_qs_ngp;		
-						
-	unsigned long gp_start;			
-						
-	unsigned long jiffies_stall;		
-						
-	unsigned long gp_max;			
-						
-	char *name;				
+	raw_spinlock_t onofflock;		/* exclude on/offline and */
+						/*  starting new GP. */
+	struct rcu_head *orphan_nxtlist;	/* Orphaned callbacks that */
+						/*  need a grace period. */
+	struct rcu_head **orphan_nxttail;	/* Tail of above. */
+	struct rcu_head *orphan_donelist;	/* Orphaned callbacks that */
+						/*  are ready to invoke. */
+	struct rcu_head **orphan_donetail;	/* Tail of above. */
+	long qlen_lazy;				/* Number of lazy callbacks. */
+	long qlen;				/* Total number of callbacks. */
+	struct task_struct *rcu_barrier_in_progress;
+						/* Task doing rcu_barrier(), */
+						/*  or NULL if no barrier. */
+	raw_spinlock_t fqslock;			/* Only one task forcing */
+						/*  quiescent states. */
+	unsigned long jiffies_force_qs;		/* Time at which to invoke */
+						/*  force_quiescent_state(). */
+	unsigned long n_force_qs;		/* Number of calls to */
+						/*  force_quiescent_state(). */
+	unsigned long n_force_qs_lh;		/* ~Number of calls leaving */
+						/*  due to lock unavailable. */
+	unsigned long n_force_qs_ngp;		/* Number of calls leaving */
+						/*  due to no GP active. */
+	unsigned long gp_start;			/* Time at which GP started, */
+						/*  but in jiffies. */
+	unsigned long jiffies_stall;		/* Time at which to check */
+						/*  for CPU stalls. */
+	unsigned long gp_max;			/* Maximum GP duration in */
+						/*  jiffies. */
+	char *name;				/* Name of structure. */
 };
 
 
@@ -403,6 +428,7 @@ static void __cpuinit rcu_prepare_kthreads(int cpu);
 static void rcu_prepare_for_idle_init(int cpu);
 static void rcu_cleanup_after_idle(int cpu);
 static void rcu_prepare_for_idle(int cpu);
+static void rcu_idle_count_callbacks_posted(void);
 static void print_cpu_stall_info_begin(void);
 static void print_cpu_stall_info(struct rcu_state *rsp, int cpu);
 static void print_cpu_stall_info_end(void);
