@@ -1038,4 +1038,12 @@ config TOUCHSCREEN_GT9XX
 
 source "drivers/input/touchscreen/gt9xx/Kconfig"
 
+config TOUCHSCREEN_TOUCHBOOST
+	bool "Touchboost from Franco"
+	depends on I2C
+	help
+	  Franco's touchboost driver based on CAF's cpu-boost
+
+          If unsure, say N.
+
 endif
