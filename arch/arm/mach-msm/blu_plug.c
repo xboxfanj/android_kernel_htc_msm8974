@@ -11,6 +11,7 @@
  *
  */
 
+#define DEBUG 0
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/kernel.h>
@@ -25,24 +26,25 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 
-#define INIT_DELAY		(60 * HZ) /* Initial delay to 60 sec */
+#define INIT_DELAY		(20 * HZ) /* Initial delay to 20 sec */
 #define DELAY			(HZ / 2)
 #define UP_THRESHOLD		(25)
 #define MIN_ONLINE		(2)
 #define MAX_ONLINE		(4)
 #define DEF_DOWN_TIMER_CNT	(10)	/* 5 secs */
 #define DEF_UP_TIMER_CNT	(2)	/* 1 sec */
+#define MAX_CORES_SCREENOFF (1)
 
-static int enabled;
-static unsigned int up_threshold;
-static unsigned int delay;
-static unsigned int min_online;
-static unsigned int max_online;
+static unsigned int enabled = 1;
+static unsigned int up_threshold = UP_THRESHOLD;;
+static unsigned int delay = DELAY;
+static unsigned int min_online = MIN_ONLINE;
+static unsigned int max_online = MAX_ONLINE;
 static unsigned int down_timer;
 static unsigned int up_timer;
-static unsigned int down_timer_cnt;
-static unsigned int up_timer_cnt;
-static unsigned int saved_min_online;
+static unsigned int down_timer_cnt = DEF_DOWN_TIMER_CNT;
+static unsigned int up_timer_cnt = DEF_UP_TIMER_CNT;
+static unsigned int max_cores_screenoff = MAX_CORES_SCREENOFF;
 
 static struct delayed_work dyn_work;
 static struct workqueue_struct *dyn_workq;
@@ -57,6 +59,7 @@ static struct notifier_block notify;
 static inline void up_all(bool lim)
 {
 	unsigned int cpu;
+
 	unsigned int max = (lim ? max_online : num_possible_cpus());
 
 	for_each_possible_cpu(cpu)
@@ -86,13 +89,14 @@ static inline void up_one(void)
 		goto out;
 
 	cpu = cpumask_next_zero(0, cpu_online_mask);
-	cpu_up(cpu);
+	if (cpu < nr_cpu_ids)
+		cpu_up(cpu);
 out:
 	down_timer = 0;
 	up_timer = 0;
 }
 
-/* Iterate through online CPUs and bring online the first one */
+/* Iterate through online CPUs and bring offline the first one */
 static inline void down_one(void)
 {
 	unsigned int cpu;
@@ -127,34 +131,42 @@ out:
  */
 static __cpuinit void load_timer(struct work_struct *work)
 {
-	unsigned int cpu, max_rate;
+	unsigned int cpu;
 	unsigned int avg_load = 0;
 
+	if (!enabled)
+		return;
+	
 	if (down_timer < down_timer_cnt)
 		down_timer++;
 
 	if (up_timer < up_timer_cnt)
 		up_timer++;
-		
-	max_rate = cpufreq_quick_get_max(cpu);
 	
 	for_each_online_cpu(cpu)
-		avg_load += cpufreq_quick_get(cpu);
-
-	avg_load = (int)(((avg_load/num_online_cpus())/max_rate)*100);
-	pr_debug("%s: avg_load: %u, num_online_cpus: %u, down_timer: %u\n", __func__, avg_load, num_online_cpus(), down_timer);
+		avg_load += cpufreq_quick_get_util(cpu);
+		
+	avg_load /= num_online_cpus();
+	
+#if DEBUG
+	pr_debug("%s: avg_load: %u, num_online_cpus: %u\n", __func__, avg_load, cpus_online);
+	pr_debug("%s: up_timer: %u, down_timer: %u\n", __func__, up_timer, down_timer);
+#endif
 
 	if (avg_load >= up_threshold && up_timer >= up_timer_cnt)
 		up_one();
-	else if (down_timer >= down_timer_cnt)
+	if (avg_load < up_threshold && down_timer >= down_timer_cnt)
 		down_one();
 
-	queue_delayed_work_on(0, dyn_workq, &dyn_work, delay);
+	queue_delayed_work_on(0, dyn_workq, &dyn_work, msecs_to_jiffies(delay));
 }
 
 static void dyn_hp_enable(void)
 {
-	queue_delayed_work_on(0, dyn_workq, &dyn_work, delay);
+	/* Driver is enabled bring online all CPUs until max_cpus */
+	up_all(true);
+
+	queue_delayed_work_on(0, dyn_workq, &dyn_work, msecs_to_jiffies(delay));
 }
 
 static void dyn_hp_disable(void)
@@ -169,19 +181,36 @@ static void dyn_hp_disable(void)
 /* On suspend bring offline all cores except cpu0*/
 static void dyn_lcd_suspend(struct work_struct *work)
 {
-	pr_debug("%s: num_online_cpus: %u\n", __func__, num_online_cpus());
+	unsigned int cpu;
 
-	saved_min_online = min_online;
-	min_online = 1;
+	if (!enabled)
+		return;
+	
+	cancel_delayed_work(&dyn_work);
+	flush_scheduled_work();
+
+	for_each_online_cpu(cpu)
+		if (cpu && num_online_cpus() > max_cores_screenoff)
+			cpu_down(cpu);
+	
+#if DEBUG
+	pr_debug("%s: num_online_cpus: %u\n", __func__, num_online_cpus());
+#endif
 }
 
 /* On resume bring online all CPUs to prevent lags */
 static __cpuinit void dyn_lcd_resume(struct work_struct *work)
 {
-	pr_debug("%s: num_online_cpus: %u\n", __func__, num_online_cpus());
-
-	min_online = saved_min_online;
+	if (!enabled)
+		return;
+	
 	up_all(true);
+	
+	queue_delayed_work_on(0, dyn_workq, &dyn_work, msecs_to_jiffies(delay));
+
+#if DEBUG
+	pr_debug("%s: num_online_cpus: %u\n", __func__, num_online_cpus());
+#endif
 }
 
 static int __cpuinit lcd_notifier_callback(struct notifier_block *this, unsigned long event, void *data)
@@ -268,7 +297,6 @@ static __cpuinit int set_min_online(const char *val, const struct kernel_param *
 	ret = param_set_uint(val, kp);
 	
 	if (ret == 0) {
-		saved_min_online = min_online;
 		if (enabled)
 			up_all(true);
 	}
@@ -313,6 +341,39 @@ static struct kernel_param_ops max_online_ops = {
 };
 
 module_param_cb(max_online, &max_online_ops, &max_online, 0644);
+
+/* max_cores_screenoff */
+static __cpuinit int set_max_cores_screenoff(const char *val, const struct kernel_param *kp)
+{
+	int ret = 0;
+	unsigned int i;
+
+	ret = kstrtouint(val, 10, &i);
+	if (ret)
+		return -EINVAL;
+	if (i < 1 || i > num_possible_cpus())
+		return -EINVAL;
+	if (i > min_online)
+		max_cores_screenoff = min_online;
+
+	ret = param_set_uint(val, kp);
+	
+	if (ret == 0) {
+		if (enabled) {
+			down_all();
+			up_all(true);
+		}
+	}
+	
+	return ret;
+}
+
+static struct kernel_param_ops max_cores_screenoff_ops = {
+	.set = set_max_cores_screenoff,
+	.get = param_get_uint,
+};
+
+module_param_cb(max_cores_screenoff, &max_cores_screenoff_ops, &max_cores_screenoff, 0644);
 
 /* down_timer_cnt */
 static int set_down_timer_cnt(const char *val, const struct kernel_param *kp)
@@ -366,16 +427,9 @@ module_param_cb(up_timer_cnt, &up_timer_cnt_ops, &up_timer_cnt, 0644);
 
 static int __init dyn_hp_init(void)
 {
-	delay = DELAY;
-	up_threshold = UP_THRESHOLD;
-	min_online = MIN_ONLINE;
-	max_online = MAX_ONLINE;
-	down_timer_cnt = DEF_DOWN_TIMER_CNT;
-	up_timer_cnt = DEF_UP_TIMER_CNT;
-	
 	notify.notifier_call = lcd_notifier_callback;
 	if (lcd_register_client(&notify) != 0)
-		pr_warn("lcd client register error\n");
+		pr_info("%s: lcd client register error\n", __func__);
 	
 	dyn_workq = alloc_workqueue("dyn_hotplug_workqueue", WQ_FREEZABLE, 1);
 	if (!dyn_workq)
@@ -403,7 +457,7 @@ static void __exit dyn_hp_exit(void)
 MODULE_AUTHOR("Stratos Karafotis <stratosk@semaphore.gr");
 MODULE_AUTHOR("engstk <eng.stk@sapo.pt>");
 MODULE_DESCRIPTION("'dyn_hotplug' - A dynamic hotplug driver for mako / hammerhead (blu_plug)");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPLv2");
 
 late_initcall(dyn_hp_init);
 module_exit(dyn_hp_exit);
