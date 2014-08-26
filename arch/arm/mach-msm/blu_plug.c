@@ -28,7 +28,7 @@
 
 #define INIT_DELAY		(20 * HZ) /* Initial delay to 20 sec */
 #define DELAY			(HZ / 2)
-#define UP_THRESHOLD		(25)
+#define UP_THRESHOLD		(50)
 #define MIN_ONLINE		(2)
 #define MAX_ONLINE		(4)
 #define DEF_DOWN_TIMER_CNT	(10)	/* 5 secs */
@@ -79,7 +79,7 @@ static inline void down_all(void)
 			cpu_down(cpu);
 }
 
-/* Iterate through possible CPUs and bring online the first found offline one */
+/* Iterate through possible CPUs and bring online the first offline found */
 static inline void up_one(void)
 {
 	unsigned int cpu;
@@ -96,7 +96,7 @@ out:
 	up_timer = 0;
 }
 
-/* Iterate through online CPUs and bring offline the first one */
+/* Iterate through online CPUs and bring offline the lowest loaded one */
 static inline void down_one(void)
 {
 	unsigned int cpu;
@@ -107,6 +107,8 @@ static inline void down_one(void)
 	if (num_online_cpus() == min_online)
 		goto out;
 
+	get_online_cpus();
+
 	for_each_online_cpu(cpu)
 		if (cpu) {
 			unsigned int cur = cpufreq_quick_get(cpu);
@@ -116,6 +118,8 @@ static inline void down_one(void)
 				l_cpu = cpu;
 			}
 		}
+
+	put_online_cpus();
 
 	cpu_down(l_cpu);
 out:
@@ -149,13 +153,13 @@ static __cpuinit void load_timer(struct work_struct *work)
 	avg_load /= num_online_cpus();
 	
 #if DEBUG
-	pr_debug("%s: avg_load: %u, num_online_cpus: %u\n", __func__, avg_load, cpus_online);
+	pr_debug("%s: avg_load: %u, num_online_cpus: %u\n", __func__, avg_load, num_online_cpus());
 	pr_debug("%s: up_timer: %u, down_timer: %u\n", __func__, up_timer, down_timer);
 #endif
 
 	if (avg_load >= up_threshold && up_timer >= up_timer_cnt)
 		up_one();
-	if (avg_load < up_threshold && down_timer >= down_timer_cnt)
+	else if (down_timer >= down_timer_cnt)
 		down_one();
 
 	queue_delayed_work_on(0, dyn_workq, &dyn_work, msecs_to_jiffies(delay));
@@ -198,7 +202,7 @@ static void dyn_lcd_suspend(struct work_struct *work)
 #endif
 }
 
-/* On resume bring online all CPUs to prevent lags */
+/* On resume bring online CPUs until max_online to prevent lags */
 static __cpuinit void dyn_lcd_resume(struct work_struct *work)
 {
 	if (!enabled)
@@ -386,6 +390,9 @@ static int set_down_timer_cnt(const char *val, const struct kernel_param *kp)
 		return -EINVAL;
 	if (i < 1 || i > 50)
 		return -EINVAL;
+		
+	if (i < up_timer_cnt)
+		down_timer_cnt = up_timer_cnt;
 
 	ret = param_set_uint(val, kp);
 	
