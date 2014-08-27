@@ -121,7 +121,12 @@ static inline void down_one(void)
 
 	put_online_cpus();
 
+	/* CPU is boosted, let's  give him 1 sec. more */
+	if(check_cpuboost(l_cpu))
+		return;
+	
 	cpu_down(l_cpu);
+	
 out:
 	down_timer = 0;
 	up_timer = 0;
