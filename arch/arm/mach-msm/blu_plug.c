@@ -23,6 +23,7 @@
 #include <linux/timer.h>
 #include <linux/lcd_notify.h>
 #include <linux/cpufreq.h>
+#include <mach/cpufreq.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
 
@@ -34,6 +35,7 @@
 #define DEF_DOWN_TIMER_CNT	(10)	/* 5 secs */
 #define DEF_UP_TIMER_CNT	(2)	/* 1 sec */
 #define MAX_CORES_SCREENOFF (1)
+#define MAX_FREQ_SCREENOFF (1190400)
 
 static unsigned int enabled = 1;
 static unsigned int up_threshold = UP_THRESHOLD;;
@@ -45,6 +47,7 @@ static unsigned int up_timer;
 static unsigned int down_timer_cnt = DEF_DOWN_TIMER_CNT;
 static unsigned int up_timer_cnt = DEF_UP_TIMER_CNT;
 static unsigned int max_cores_screenoff = MAX_CORES_SCREENOFF;
+static unsigned int max_freq_screenoff = MAX_FREQ_SCREENOFF;
 
 static struct delayed_work dyn_work;
 static struct workqueue_struct *dyn_workq;
@@ -69,7 +72,7 @@ static inline void up_all(bool lim)
 	down_timer = 0;
 }
 
-/* Bring offline each possible CPU down to min_online threshold */
+/* Put offline each possible CPU down to min_online threshold */
 static inline void down_all(void)
 {
 	unsigned int cpu;
@@ -96,7 +99,7 @@ out:
 	up_timer = 0;
 }
 
-/* Iterate through online CPUs and bring offline the lowest loaded one */
+/* Iterate through online CPUs and put offline the lowest loaded one */
 static inline void down_one(void)
 {
 	unsigned int cpu;
@@ -187,24 +190,54 @@ static void dyn_hp_disable(void)
 	up_all(false);
 }
 
-/* On suspend bring offline all cores except cpu0*/
-static void dyn_lcd_suspend(struct work_struct *work)
+static __cpuinit void max_screenoff(bool screenoff)
 {
 	unsigned int cpu;
+	uint32_t freq;
+	
+	if (!enabled)
+		return;
 
+	if (max_cores_screenoff > min_online)
+		max_cores_screenoff = min_online;
+		
+	if (screenoff) {
+		freq = max_freq_screenoff;
+		
+		cancel_delayed_work(&dyn_work);
+		flush_scheduled_work();
+
+		for_each_online_cpu(cpu) {
+			msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, freq);
+			
+			if (cpu && num_online_cpus() > max_cores_screenoff)
+				cpu_down(cpu);
+			}
+	}
+	else {
+		freq = cpufreq_quick_get_max(0);
+		
+		up_all(true);
+		
+		for_each_online_cpu(cpu) {
+			msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, freq);
+		}
+
+		queue_delayed_work_on(0, dyn_workq, &dyn_work, delay);
+	}
+	
+#if DEBUG
+	pr_debug("%s: num_online_cpus: %u, freq_online_cpus: %u\n", __func__, num_online_cpus(), freq);
+#endif
+}
+
+/* On suspend put offline all cores except cpu0*/
+static __cpuinit void dyn_lcd_suspend(struct work_struct *work)
+{
 	if (!enabled)
 		return;
 	
-	cancel_delayed_work(&dyn_work);
-	flush_scheduled_work();
-
-	for_each_online_cpu(cpu)
-		if (cpu && num_online_cpus() > max_cores_screenoff)
-			cpu_down(cpu);
-	
-#if DEBUG
-	pr_debug("%s: num_online_cpus: %u\n", __func__, num_online_cpus());
-#endif
+	max_screenoff(true);
 }
 
 /* On resume bring online CPUs until max_online to prevent lags */
@@ -213,16 +246,10 @@ static __cpuinit void dyn_lcd_resume(struct work_struct *work)
 	if (!enabled)
 		return;
 	
-	up_all(true);
-	
-	queue_delayed_work_on(0, dyn_workq, &dyn_work, delay);
-
-#if DEBUG
-	pr_debug("%s: num_online_cpus: %u\n", __func__, num_online_cpus());
-#endif
+	max_screenoff(false);
 }
 
-static int __cpuinit lcd_notifier_callback(struct notifier_block *this, unsigned long event, void *data)
+static __cpuinit int lcd_notifier_callback(struct notifier_block *this, unsigned long event, void *data)
 {
 	switch (event) {
 	case LCD_EVENT_ON_END:
@@ -383,6 +410,30 @@ static struct kernel_param_ops max_cores_screenoff_ops = {
 };
 
 module_param_cb(max_cores_screenoff, &max_cores_screenoff_ops, &max_cores_screenoff, 0644);
+
+/* max_freq_screenoff */
+static __cpuinit int set_max_freq_screenoff(const char *val, const struct kernel_param *kp)
+{
+	int ret = MAX_FREQ_SCREENOFF;
+	unsigned int i;
+
+	ret = kstrtouint(val, 10, &i);
+	if (ret)
+		return -EINVAL;
+	if (i < 300000 || i > 2265600)
+		return -EINVAL;
+
+	ret = param_set_uint(val, kp);
+	
+	return ret;
+}
+
+static struct kernel_param_ops max_freq_screenoff_ops = {
+	.set = set_max_freq_screenoff,
+	.get = param_get_uint,
+};
+
+module_param_cb(max_freq_screenoff, &max_freq_screenoff_ops, &max_freq_screenoff, 0644);
 
 /* down_timer_cnt */
 static int set_down_timer_cnt(const char *val, const struct kernel_param *kp)
