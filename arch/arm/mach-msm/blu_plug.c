@@ -28,7 +28,7 @@
 
 #define INIT_DELAY		(20 * HZ) /* Initial delay to 20 sec */
 #define DELAY			(HZ / 2)
-#define UP_THRESHOLD		(50)
+#define UP_THRESHOLD		(70)
 #define MIN_ONLINE		(2)
 #define MAX_ONLINE		(4)
 #define DEF_DOWN_TIMER_CNT	(10)	/* 5 secs */
@@ -167,7 +167,7 @@ static __cpuinit void load_timer(struct work_struct *work)
 	else if (down_timer >= down_timer_cnt)
 		down_one();
 
-	queue_delayed_work_on(0, dyn_workq, &dyn_work, msecs_to_jiffies(delay));
+	queue_delayed_work_on(0, dyn_workq, &dyn_work, delay);
 }
 
 static void dyn_hp_enable(void)
@@ -175,7 +175,7 @@ static void dyn_hp_enable(void)
 	/* Driver is enabled bring online all CPUs until max_cpus */
 	up_all(true);
 
-	queue_delayed_work_on(0, dyn_workq, &dyn_work, msecs_to_jiffies(delay));
+	queue_delayed_work_on(0, dyn_workq, &dyn_work, delay);
 }
 
 static void dyn_hp_disable(void)
@@ -215,7 +215,7 @@ static __cpuinit void dyn_lcd_resume(struct work_struct *work)
 	
 	up_all(true);
 	
-	queue_delayed_work_on(0, dyn_workq, &dyn_work, msecs_to_jiffies(delay));
+	queue_delayed_work_on(0, dyn_workq, &dyn_work, delay);
 
 #if DEBUG
 	pr_debug("%s: num_online_cpus: %u\n", __func__, num_online_cpus());
