@@ -36,6 +36,7 @@
 #define DEF_UP_TIMER_CNT	(2)	/* 1 sec */
 #define MAX_CORES_SCREENOFF (1)
 #define MAX_FREQ_SCREENOFF (1190400)
+#define MAX_FREQ_POWERSAVER (1728000)
 
 static unsigned int enabled = 1;
 static unsigned int up_threshold = UP_THRESHOLD;;
@@ -48,6 +49,7 @@ static unsigned int down_timer_cnt = DEF_DOWN_TIMER_CNT;
 static unsigned int up_timer_cnt = DEF_UP_TIMER_CNT;
 static unsigned int max_cores_screenoff = MAX_CORES_SCREENOFF;
 static unsigned int max_freq_screenoff = MAX_FREQ_SCREENOFF;
+static unsigned int powersaver_mode = 0;
 
 static struct delayed_work dyn_work;
 static struct workqueue_struct *dyn_workq;
@@ -145,9 +147,6 @@ static __cpuinit void load_timer(struct work_struct *work)
 {
 	unsigned int cpu;
 	unsigned int avg_load = 0;
-
-	if (!enabled)
-		return;
 	
 	if (down_timer < down_timer_cnt)
 		down_timer++;
@@ -190,18 +189,21 @@ static void dyn_hp_disable(void)
 	up_all(false);
 }
 
+/* 
+ * Manages driver behavior on screenoff mode
+ * It sets max online CPUs to max_cores_screenoff and freq to max_freq_screenoff
+ * Restores previous values on resume work
+ *
+ */
 static __cpuinit void max_screenoff(bool screenoff)
 {
 	unsigned int cpu;
 	uint32_t freq;
-	
-	if (!enabled)
-		return;
-
-	if (max_cores_screenoff > min_online)
-		max_cores_screenoff = min_online;
 		
 	if (screenoff) {
+		if (max_cores_screenoff > min_online)
+			max_cores_screenoff = min_online;
+		
 		freq = max_freq_screenoff;
 		
 		cancel_delayed_work(&dyn_work);
@@ -231,10 +233,50 @@ static __cpuinit void max_screenoff(bool screenoff)
 #endif
 }
 
+/* 
+ * Manages driver behavior in powersave mode
+ * It sets max online CPUs to 1 and max freq to 1728000 Hz
+ * Restores previous values on resume work
+ *
+ */
+static __cpuinit void powersaver_fn(bool mode)
+{
+	unsigned int cpu;
+	uint32_t freq_save;
+		
+	if (mode) {	
+		freq_save = MAX_FREQ_POWERSAVER;
+		
+		cancel_delayed_work(&dyn_work);
+		flush_scheduled_work();
+
+		for_each_online_cpu(cpu) {
+			msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, freq_save);
+			if (cpu)
+				cpu_down(cpu);
+		}
+	}
+	else {
+		freq_save = cpufreq_quick_get_max(0);
+		
+		up_all(true);
+		
+		for_each_online_cpu(cpu) {
+			msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, freq_save);
+		}
+
+		queue_delayed_work_on(0, dyn_workq, &dyn_work, delay);
+	}
+	
+#if DEBUG
+	pr_debug("%s: num_online_cpus: %u, freq_online_cpus: %u\n", __func__, num_online_cpus(), freq_save);
+#endif
+}
+
 /* On suspend put offline all cores except cpu0*/
 static __cpuinit void dyn_lcd_suspend(struct work_struct *work)
 {
-	if (!enabled)
+	if (!enabled || powersaver_mode)
 		return;
 	
 	max_screenoff(true);
@@ -243,7 +285,7 @@ static __cpuinit void dyn_lcd_suspend(struct work_struct *work)
 /* On resume bring online CPUs until max_online to prevent lags */
 static __cpuinit void dyn_lcd_resume(struct work_struct *work)
 {
-	if (!enabled)
+	if (!enabled || powersaver_mode)
 		return;
 	
 	max_screenoff(false);
@@ -435,6 +477,30 @@ static struct kernel_param_ops max_freq_screenoff_ops = {
 
 module_param_cb(max_freq_screenoff, &max_freq_screenoff_ops, &max_freq_screenoff, 0644);
 
+/* powersave_mode enable*/
+static __cpuinit int set_powersaver_mode(const char *val, const struct kernel_param *kp)
+{
+	int ret = 0;
+
+	ret = param_set_bool(val, kp);
+	
+	if (powersaver_mode)
+		powersaver_fn(true);
+	else
+		powersaver_fn(false);
+
+	pr_info("%s: powersaver enabled = %d\n", __func__, powersaver_mode);
+	
+	return ret;
+}
+
+static struct kernel_param_ops powersaver_mode_ops = {
+	.set = set_powersaver_mode,
+	.get = param_get_bool,
+};
+
+module_param_cb(powersaver_mode, &powersaver_mode_ops, &powersaver_mode, 0644);
+
 /* down_timer_cnt */
 static int set_down_timer_cnt(const char *val, const struct kernel_param *kp)
 {
@@ -494,7 +560,7 @@ static int __init dyn_hp_init(void)
 	if (lcd_register_client(&notify) != 0)
 		pr_info("%s: lcd client register error\n", __func__);
 	
-	dyn_workq = alloc_workqueue("dyn_hotplug_workqueue", WQ_FREEZABLE, 1);
+	dyn_workq = alloc_workqueue("dyn_hotplug_workqueue", WQ_HIGHPRI | WQ_FREEZABLE, 1);
 	if (!dyn_workq)
 		return -ENOMEM;
 
