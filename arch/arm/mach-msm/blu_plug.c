@@ -201,10 +201,15 @@ static __cpuinit void max_screenoff(bool screenoff)
 	uint32_t freq;
 		
 	if (screenoff) {
+		freq = max_freq_screenoff;
+		
+		if (powersaver_mode) {
+			msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, freq);
+			goto out;
+		}
+			
 		if (max_cores_screenoff > min_online)
 			max_cores_screenoff = min_online;
-		
-		freq = max_freq_screenoff;
 		
 		cancel_delayed_work(&dyn_work);
 		flush_scheduled_work();
@@ -217,6 +222,12 @@ static __cpuinit void max_screenoff(bool screenoff)
 			}
 	}
 	else {
+		if (powersaver_mode) {
+			freq = MAX_FREQ_POWERSAVER;
+			msm_cpufreq_set_freq_limits(0, MSM_CPUFREQ_NO_LIMIT, freq);
+			goto out;
+		}
+		
 		freq = cpufreq_quick_get_max(0);
 		
 		up_all(true);
@@ -227,6 +238,10 @@ static __cpuinit void max_screenoff(bool screenoff)
 
 		queue_delayed_work_on(0, dyn_workq, &dyn_work, delay);
 	}
+	
+out:
+	down_timer = 0;
+	up_timer = 0;
 	
 #if DEBUG
 	pr_debug("%s: num_online_cpus: %u, freq_online_cpus: %u\n", __func__, num_online_cpus(), freq);
@@ -276,7 +291,7 @@ static __cpuinit void powersaver_fn(bool mode)
 /* On suspend put offline all cores except cpu0*/
 static __cpuinit void dyn_lcd_suspend(struct work_struct *work)
 {
-	if (!enabled || powersaver_mode)
+	if (!enabled)
 		return;
 	
 	max_screenoff(true);
@@ -285,7 +300,7 @@ static __cpuinit void dyn_lcd_suspend(struct work_struct *work)
 /* On resume bring online CPUs until max_online to prevent lags */
 static __cpuinit void dyn_lcd_resume(struct work_struct *work)
 {
-	if (!enabled || powersaver_mode)
+	if (!enabled)
 		return;
 	
 	max_screenoff(false);
