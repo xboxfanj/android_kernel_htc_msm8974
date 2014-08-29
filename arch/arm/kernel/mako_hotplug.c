@@ -333,7 +333,7 @@ static void __ref mako_hotplug_resume(struct work_struct *work)
 
 	for_each_possible_cpu(cpu)
 	{
-		if (!cpu)
+		if (!cpu || cpu_online(cpu))
 			continue;
 
 		cpu_up(cpu);
