@@ -17,13 +17,13 @@ endif
 endif
 
 AFLAGS_head.o := -DTEXT_OFFSET=$(TEXT_OFFSET)
-AFLAGS_head.o += -Wa,-march=armv7-a$(plus_sec)
+AFLAGS_head.o += -Wa,-mcpu=cortex-a15 -mfpu=neon
 HEAD = head.o
 
-AFLAGS_misc.o +=-Wa,-march=armv7-a$(plus_sec)
+AFLAGS_misc.o +=-Wa,-mcpu=cortex-a15 -mfpu=neon
 MISC = misc.o
 
-AFLAGS_decompress.o += -Wa,-march=armv7-a$(plus_sec)
+AFLAGS_decompress.o += -Wa,-mcpu=cortex-a15 -mfpu=neon
 DECOMPRESS = decompress.o
 
 FONTC	= $(srctree)/drivers/video/console/font_acorn_8x8.c
@@ -154,7 +154,7 @@ LDFLAGS_vmlinux += -X
 LDFLAGS_vmlinux += -T
 
 # For __aeabi_uidivmod
-AFLAGS_lib1funcs.o +=-Wa,-march=armv7-a$(plus_sec)
+AFLAGS_lib1funcs.o +=-Wa,-mcpu=cortex-a15 -mfpu=neon
 lib1funcs = $(obj)/lib1funcs.o
 
 $(obj)/lib1funcs.S: $(srctree)/arch/$(SRCARCH)/lib/lib1funcs.S
@@ -173,7 +173,7 @@ bad_syms=$$($(CROSS_COMPILE)nm $@ | sed -n 's/^.\{8\} [bc] \(.*\)/\1/p') && \
   ( echo "following symbols must have non local/private scope:" >&2; \
     echo "$$bad_syms" >&2; rm -f $@; false )
 # For __aeabi_llsl
-AFLAGS_ashldi3.o +=-Wa,-march=armv7-a$(plus_sec)
+AFLAGS_ashldi3.o +=-Wa,-mcpu=cortex-a15 -mfpu=neon
 ashldi3 = $(obj)/ashldi3.o
 
 $(obj)/ashldi3.S: $(srctree)/arch/$(SRCARCH)/lib/ashldi3.S FORCE
@@ -184,7 +184,7 @@ $(obj)/vmlinux: $(obj)/vmlinux.lds $(obj)/$(HEAD) $(obj)/$(MISC) $(obj)/$(DECOMP
 	$(call if_changed,ld)
 	@$(check_for_bad_syms)
 
-AFLAGS_piggy.$(suffix_y).o += -Wa,-march=armv7-a$(plus_sec)
+AFLAGS_piggy.$(suffix_y).o += -Wa,-mcpu=cortex-a15 -mfpu=neon
 $(obj)/piggy.$(suffix_y): $(obj)/../Image FORCE
 	$(call if_changed,$(suffix_y))
 

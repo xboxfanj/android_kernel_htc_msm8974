@@ -244,8 +244,8 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = gcc
 HOSTCXX      = g++
-HOSTCFLAGS   = -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -fgcse-las
-HOSTCXXFLAGS = -O3 -fgcse-las
+HOSTCFLAGS   = -Wmissing-prototypes -Wstrict-prototypes -Os -fomit-frame-pointer -fgcse-las
+HOSTCXXFLAGS = -Os -fgcse-las
 
 # Decide whether to build built-in, modular, or both.
 # Normally, just do built-in.
@@ -347,23 +347,23 @@ CHECK		= sparse
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
 MODFLAGS        = -DMODULE \
-                  -mfpu=neon-vfpv4 \
+                  -mfpu=neon \
                   -mtune=cortex-a15 \
 		  -fgcse-las \
 		  -fpredictive-commoning \
-                  -O3
+                  -Os
 
 CFLAGS_MODULE   = $(MODFLAGS)
 AFLAGS_MODULE   = $(MODFLAGS)
 LDFLAGS_MODULE  = -T $(srctree)/scripts/module-common.lds
-CFLAGS_KERNEL   = -mfpu=neon-vfpv4 \
+CFLAGS_KERNEL   = -mfpu=neon \
                   -mtune=cortex-a15 \
 		  -fgcse-las \
 		  -fpredictive-commoning \
-                  -O2
+                  -Os
 
-ifeq ($(ENABLE_GRAPHITE),true)
-CFLAGS_KERNEL	+= -fgraphite -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block
+ifdef CONFIG_CC_GRAPHITE_OPTIMIZATION
+CFLAGS_KERNEL	+= -fgraphite-identity -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block
 endif
 AFLAGS_KERNEL	=
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
@@ -382,7 +382,7 @@ CFLAGS_A15 = -mtune=cortex-a15 -mfpu=neon -funsafe-math-optimizations
 CFLAGS_MODULO = -fmodulo-sched -fmodulo-sched-allow-regmoves
 KERNEL_MODS        = $(CFLAGS_A15) $(CFLAGS_MODULO)
  
-KBUILD_CFLAGS   := -O3 -funswitch-loops \
+KBUILD_CFLAGS   := -Os -funswitch-loops \
  		           -Wundef -Wstrict-prototypes -Wno-trigraphs \
  		           -fno-strict-aliasing -fno-common \
  		           -Werror-implicit-function-declaration \
@@ -578,13 +578,10 @@ endif # $(dot-config)
 # Defaults to vmlinux, but the arch makefile usually adds further targets
 all: vmlinux
 
-ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS	+= -Os $(call cc-disable-warning,maybe-uninitialized,)
-else
-KBUILD_CFLAGS	+= -O3
-ifeq ($(ENABLE_GRAPHITE),true)
-KBUILD_CFLAGS	+= -fgraphite -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block
-endif
+
+ifdef CONFIG_CC_GRAPHITE_OPTIMIZATION
+KBUILD_CFLAGS	+= -fgraphite-identity -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block
 endif
 
 include $(srctree)/arch/$(SRCARCH)/Makefile

@@ -962,6 +962,13 @@ config CC_OPTIMIZE_FOR_SIZE
 
 	  If unsure, say Y.
 
+config CC_GRAPHITE_OPTIMIZATION
+	bool "Enable graphite optimizations"
+	help
+	  Enabling this option will turn on graphite optimizations.
+
+	  If unsure, say N.
+
 config SYSCTL
 	bool
 
