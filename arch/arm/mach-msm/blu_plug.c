@@ -38,7 +38,6 @@
 #define MAX_FREQ_SCREENOFF (1190400)
 #define MAX_FREQ_POWERSAVER (1728000)
 
-static unsigned int enabled = 1;
 static unsigned int up_threshold = UP_THRESHOLD;;
 static unsigned int delay = DELAY;
 static unsigned int min_online = MIN_ONLINE;
@@ -172,23 +171,6 @@ static __cpuinit void load_timer(struct work_struct *work)
 	queue_delayed_work_on(0, dyn_workq, &dyn_work, delay);
 }
 
-static void dyn_hp_enable(void)
-{
-	/* Driver is enabled bring online all CPUs until max_cpus */
-	up_all(true);
-
-	queue_delayed_work_on(0, dyn_workq, &dyn_work, delay);
-}
-
-static void dyn_hp_disable(void)
-{
-	cancel_delayed_work(&dyn_work);
-	flush_scheduled_work();
-
-	/* Driver is disabled bring online all CPUs unconditionally */
-	up_all(false);
-}
-
 /* 
  * Manages driver behavior on screenoff mode
  * It sets max online CPUs to max_cores_screenoff and freq to max_freq_screenoff
@@ -290,19 +272,13 @@ static __cpuinit void powersaver_fn(bool mode)
 
 /* On suspend put offline all cores except cpu0*/
 static __cpuinit void dyn_lcd_suspend(struct work_struct *work)
-{
-	if (!enabled)
-		return;
-	
+{	
 	max_screenoff(true);
 }
 
 /* On resume bring online CPUs until max_online to prevent lags */
 static __cpuinit void dyn_lcd_resume(struct work_struct *work)
 {
-	if (!enabled)
-		return;
-	
 	max_screenoff(false);
 }
 
@@ -326,30 +302,6 @@ static __cpuinit int lcd_notifier_callback(struct notifier_block *this, unsigned
 }
 
 /******************** Module parameters *********************/
-
-/* enabled */
-static __cpuinit int set_enabled(const char *val, const struct kernel_param *kp)
-{
-	int ret = 0;
-
-	ret = param_set_bool(val, kp);
-	if (!enabled)
-		dyn_hp_disable();
-	else
-		dyn_hp_enable();
-
-	pr_info("%s: enabled = %d\n", __func__, enabled);
-	
-	return ret;
-}
-
-static struct kernel_param_ops enabled_ops = {
-	.set = set_enabled,
-	.get = param_get_bool,
-};
-
-module_param_cb(enabled, &enabled_ops, &enabled, 0644);
-MODULE_PARM_DESC(enabled, "control dyn_hotplug");
 
 /* up_threshold */
 static int set_up_threshold(const char *val, const struct kernel_param *kp)
@@ -390,7 +342,6 @@ static __cpuinit int set_min_online(const char *val, const struct kernel_param *
 	ret = param_set_uint(val, kp);
 	
 	if (ret == 0) {
-		if (enabled)
 			up_all(true);
 	}
 	
@@ -419,10 +370,8 @@ static __cpuinit int set_max_online(const char *val, const struct kernel_param *
 	ret = param_set_uint(val, kp);
 	
 	if (ret == 0) {
-		if (enabled) {
-			down_all();
-			up_all(true);
-		}
+		down_all();
+		up_all(true);
 	}
 	
 	return ret;
@@ -452,10 +401,8 @@ static __cpuinit int set_max_cores_screenoff(const char *val, const struct kerne
 	ret = param_set_uint(val, kp);
 	
 	if (ret == 0) {
-		if (enabled) {
-			down_all();
-			up_all(true);
-		}
+		down_all();
+		up_all(true);
 	}
 	
 	return ret;
