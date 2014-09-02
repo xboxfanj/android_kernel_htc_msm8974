@@ -17,6 +17,14 @@ config CPU_FREQ
 
 if CPU_FREQ
 
+config CPU_BOOST
+	bool "CPU Boost"
+	help
+	 Driver from CodeAurora Forum to boost CPUs on 
+	 touch input for responsiveness.
+
+	  If in doubt, say N.
+
 config CPU_FREQ_TABLE
 	tristate
 
