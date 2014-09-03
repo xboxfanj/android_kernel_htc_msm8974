@@ -180,11 +180,11 @@ config CPU_FREQ_DEFAULT_GOV_NIGHTMARE
   select CPU_FREQ_GOV_NIGHTMARE
   help
 
-config CPU_FREQ_DEFAULT_GOV_BLUACTIVE
-	bool "bluactive"
+config CPU_FREQ_DEFAULT_GOV_BLU_ACTIVE
+	bool "blu_active"
 	select CPU_FREQ_GOV_BLUACTIVE
 	help
-	  Use the CPUFreq governor 'bluactive' as default. This allows
+	  Use the CPUFreq governor 'blu_active' as default. This allows
 	  you to get a full dynamic cpu frequency capable system by simply
 	  loading your cpufreq low-level hardware driver, using the
 	  'interactive' governor for latency-sensitive workloads.
@@ -407,10 +407,10 @@ config CPU_FREQ_GOV_DANCEDANCE
 	tristate "'dancedance' cpufreq governor"
 	depends on CPU_FREQ
 
-config CPU_FREQ_GOV_BLUACTIVE
-	tristate "'bluactive' cpufreq policy governor"
+config CPU_FREQ_GOV_BLU_ACTIVE
+	tristate "'blu_active' cpufreq policy governor"
 	help
-	  'bluactive' - This driver adds a dynamic cpufreq policy governor
+	  'blu_active' - This driver adds a dynamic cpufreq policy governor
 	  designed for latency-sensitive workloads.
 
 	  This governor attempts to reduce the latency of clock
