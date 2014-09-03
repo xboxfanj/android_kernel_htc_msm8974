@@ -13,6 +13,32 @@
 #ifndef __MACH_CPUFREQ_H
 #define __MACH_CPUFREQ_H
 
+#define MSM_CPUFREQ_NO_LIMIT 0xFFFFFFFF
+
+#ifdef CONFIG_CPU_FREQ_MSM
+
+/**
+ * msm_cpufreq_set_freq_limit() - Set max/min freq limits on cpu
+ *
+ * @cpu: The cpu core for which the limits apply
+ * @max: The max frequency allowed
+ * @min: The min frequency allowed
+ *
+ * If the @max or @min is set to MSM_CPUFREQ_NO_LIMIT, the limit
+ * will default to the CPUFreq limit.
+ *
+ * returns 0 on success, errno on failure
+ */
+extern int msm_cpufreq_set_freq_limits(
+		uint32_t cpu, uint32_t min, uint32_t max);
+#else
+static inline int msm_cpufreq_set_freq_limits(
+		uint32_t cpu, uint32_t min, uint32_t max)
+{
+	return -ENOSYS;
+}
+#endif
+
 #if defined(CONFIG_DEVFREQ_GOV_MSM_CPUFREQ)
 extern int devfreq_msm_cpufreq_update_bw(void);
 extern int register_devfreq_msm_cpufreq(void);
