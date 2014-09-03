@@ -351,7 +351,7 @@ MODFLAGS        = -DMODULE \
                   -mtune=cortex-a15 \
 		  -fgcse-las \
 		  -fpredictive-commoning \
-                  -Os
+                  -Os -DNDEBUG
 
 CFLAGS_MODULE   = $(MODFLAGS)
 AFLAGS_MODULE   = $(MODFLAGS)
@@ -360,7 +360,7 @@ CFLAGS_KERNEL   = -mfpu=neon-vfpv4 \
                   -mtune=cortex-a15 \
 		  -fgcse-las \
 		  -fpredictive-commoning \
-                  -Os
+                  -Os -DNDEBUG
 
 ifdef CONFIG_CC_GRAPHITE_OPTIMIZATION
 CFLAGS_KERNEL	+= -fgraphite-identity -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block
@@ -380,9 +380,9 @@ KBUILD_CPPFLAGS := -D__KERNEL__
 
 CFLAGS_A15 = -mtune=cortex-a15 -mfpu=neon-vfpv4
 CFLAGS_MODULO = -fmodulo-sched -fmodulo-sched-allow-regmoves
-KERNEL_MODS        = $(CFLAGS_A15) $(CFLAGS_MODULO)
+KERNEL_MODS        = $(CFLAGS_A15) $(CFLAGS_MODULO) -DNDEBUG
  
-KBUILD_CFLAGS   := -Os -funswitch-loops \
+KBUILD_CFLAGS   := -Os -DNDEBUG -funswitch-loops \
  		           -Wundef -Wstrict-prototypes -Wno-trigraphs \
  		           -fno-strict-aliasing -fno-common \
  		           -Werror-implicit-function-declaration \
