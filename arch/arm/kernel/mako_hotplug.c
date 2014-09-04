@@ -105,8 +105,6 @@ static struct workqueue_struct *wq;
 static struct delayed_work decide_hotplug;
 static struct work_struct suspend, resume;
 
-extern bool boosted;
-
 inline static void cpus_online_work(void)
 {
 	unsigned int cpu;
@@ -182,7 +180,7 @@ static void cpu_smash(void)
 	 * CPUFREQ_UNPLUG_LIMIT. Else update the timestamp to now and
 	 * postpone the cpu offline process to at least another second
 	 */
-	if (cpus_cpufreq_work() && !boosted)
+	if (cpus_cpufreq_work())
 	{
 		stats.timestamp = ktime_to_us(ktime_get());
 	}
