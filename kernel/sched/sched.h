@@ -8,11 +8,8 @@
 
 extern __read_mostly int scheduler_running;
 
-/*
- * Convert user-nice values [ -20 ... 0 ... 19 ]
- * to static priority [ MAX_RT_PRIO..MAX_PRIO-1 ],
- * and back.
- */
+extern unsigned int sysctl_sched_ravg_window;
+
 #define NICE_TO_PRIO(nice)	(MAX_RT_PRIO + (nice) + 20)
 #define PRIO_TO_NICE(prio)	((prio) - MAX_RT_PRIO - 20)
 #define TASK_NICE(p)		PRIO_TO_NICE((p)->static_prio)
@@ -433,23 +430,6 @@ DECLARE_PER_CPU(int, sd_llc_id);
 
 #include "stats.h"
 #include "auto_group.h"
-
-extern unsigned int sched_ravg_window;
-extern unsigned int pct_task_load(struct task_struct *p);
-extern void init_new_task_load(struct task_struct *p);
-
-static inline void
-inc_cumulative_runnable_avg(struct rq *rq, struct task_struct *p)
-{
-	rq->cumulative_runnable_avg += p->ravg.demand;
-}
-
-static inline void
-dec_cumulative_runnable_avg(struct rq *rq, struct task_struct *p)
-{
-	rq->cumulative_runnable_avg -= p->ravg.demand;
-	BUG_ON((s64)rq->cumulative_runnable_avg < 0);
-}
 
 #ifdef CONFIG_CGROUP_SCHED
 
