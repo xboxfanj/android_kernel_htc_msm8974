@@ -2208,11 +2208,6 @@ static inline void set_task_cpu(struct task_struct *p, unsigned int cpu)
 #endif 
 
 extern struct atomic_notifier_head migration_notifier_head;
-struct migration_notify_data {
-	int src_cpu;
-	int dest_cpu;
-	int load;
-};
 #ifdef CONFIG_ANDROID_BG_SCAN_MEM
 extern struct raw_notifier_head bgtsk_migration_notifier_head;
 #endif
