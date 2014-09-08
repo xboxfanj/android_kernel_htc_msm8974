@@ -85,10 +85,10 @@ __packed struct qseecom_check_app_ireq {
 
 __packed struct qseecom_load_app_ireq {
 	uint32_t qsee_cmd_id;
-	uint32_t mdt_len;		
-	uint32_t img_len;		
-	uint32_t phy_addr;		
-	char     app_name[MAX_APP_NAME_SIZE];	
+	uint32_t mdt_len;		/* Length of the mdt file */
+	uint32_t img_len;		/* Length of .bxx and .mdt files */
+	uint32_t phy_addr;		/* phy addr of the start of image */
+	char     app_name[MAX_APP_NAME_SIZE];	/* application name*/
 };
 
 __packed struct qseecom_unload_app_ireq {
@@ -124,7 +124,7 @@ __packed struct qseecom_client_send_data_ireq {
 	uint32_t app_id;
 	void *req_ptr;
 	uint32_t req_len;
-	void *rsp_ptr;   
+	void *rsp_ptr;   /* First 4 bytes should always be the return status */
 	uint32_t rsp_len;
 };
 
@@ -134,12 +134,20 @@ __packed struct qseecom_reg_log_buf_ireq {
 	uint32_t len;
 };
 
+/* send_data resp */
 __packed struct qseecom_client_listener_data_irsp {
 	uint32_t qsee_cmd_id;
 	uint32_t listener_id;
 	uint32_t status;
 };
 
+/*
+ * struct qseecom_command_scm_resp - qseecom response buffer
+ * @cmd_status: value from enum tz_sched_cmd_status
+ * @sb_in_rsp_addr: points to physical location of response
+ *                buffer
+ * @sb_in_rsp_len: length of command response
+ */
 __packed struct qseecom_command_scm_resp {
 	uint32_t result;
 	enum qseecom_command_scm_resp_type resp_type;
@@ -152,10 +160,10 @@ struct qseecom_rpmb_provision_key {
 
 __packed struct qseecom_client_send_service_ireq {
 	uint32_t qsee_cmd_id;
-	uint32_t key_type; 
-	unsigned int req_len; 
-	void *rsp_ptr; 
-	unsigned int rsp_len; 
+	uint32_t key_type; /* in */
+	unsigned int req_len; /* in */
+	void *rsp_ptr; /* in/out */
+	unsigned int rsp_len; /* in/out */
 };
 
 __packed struct qseecom_key_generate_ireq {
@@ -200,4 +208,4 @@ __packed struct qseecom_key_max_count_query_irsp {
 };
 
 
-#endif 
+#endif /* __QSEECOMI_H_ */
