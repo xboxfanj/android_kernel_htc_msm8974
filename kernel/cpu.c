@@ -288,8 +288,8 @@ static int __cpuinit _cpu_up(unsigned int cpu, int tasks_frozen)
 		goto out_notify;
 	}
 
-	/* Arch-specific enabling code. */
-	ret = __cpu_up(cpu, NULL);
+	
+	ret = __cpu_up(cpu);
 	if (ret != 0)
 		goto out_notify;
 	BUG_ON(!cpu_online(cpu));

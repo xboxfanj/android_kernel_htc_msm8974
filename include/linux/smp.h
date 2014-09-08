@@ -40,10 +40,7 @@ extern void smp_send_reschedule(int cpu);
 
 extern void smp_prepare_cpus(unsigned int max_cpus);
 
-/*
- * Bring a CPU up
- */
-extern int __cpu_up(unsigned int cpunum, struct task_struct *tidle);
+extern int __cpu_up(unsigned int cpunum);
 
 extern void smp_cpus_done(unsigned int max_cpus);
 
