@@ -24,10 +24,6 @@
 		status = "ok";
 	};
 
-	qcom,mdss_dsi@fd922800 {
-		qcom,dsi-pref-prim-pan = <&dsi_tosh_720_vid>;
-	};
-
 	qcom,mdss_mdp@fd900000 {
 		qcom,mdss-pref-prim-intf = "dsi";
 		batfet-supply = <&pm8941_chg_batif>;
@@ -728,8 +724,4 @@
 				50>;
 		qcom,channel-type = <0x1540>;
 	};
-};
-
-&dsi_tosh_720_vid {
-       qcom,cont-splash-enabled;
 };
