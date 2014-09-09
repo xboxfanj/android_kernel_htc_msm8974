@@ -3283,6 +3283,7 @@ CONFIG_PRIMA_WLAN_LFR=y
 # CONFIG_WLAN_FEATURE_11W is not set
 # CONFIG_QCOM_VOWIFI_11R is not set
 CONFIG_CPUPOWER=y
+CONFIG_CRYPTO_MOTO=y
 
 #
 # Qualcomm MSM specific device drivers
