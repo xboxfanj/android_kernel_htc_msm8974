@@ -131,4 +131,6 @@ source "drivers/staging/ozwpan/Kconfig"
 source "drivers/staging/prima/Kconfig"
 
 source "drivers/staging/cpupower/Kconfig" 
+
+source "drivers/staging/moto_crypto/Kconfig" 
 endif # STAGING

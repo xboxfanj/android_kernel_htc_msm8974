@@ -1,0 +1,2 @@
+config CRYPTO_MOTO
+	bool "Motorola Crypto driver"
