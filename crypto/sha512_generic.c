@@ -218,13 +218,8 @@ sha512_final(struct shash_desc *desc, u8 *hash)
 	pad_len = (index < 112) ? (112 - index) : ((128+112) - index);
 	crypto_sha512_update(desc, padding, pad_len);
 
-<<<<<<< HEAD
-	
-	sha512_update(desc, (const u8 *)bits, sizeof(bits));
-=======
 	/* Append length (before padding) */
 	crypto_sha512_update(desc, (const u8 *)bits, sizeof(bits));
->>>>>>> bf70fa9... crypto: sha512 - Expose generic sha512 routine to be callable from other modules
 
 	
 	for (i = 0; i < 8; i++)
