@@ -41,6 +41,8 @@
 #include <linux/regulator/consumer.h>
 #include <linux/msm_thermal_ioctl.h>
 
+struct cpufreq_policy *policy = NULL;
+
 #define MAX_CURRENT_UA 1000000
 #define MAX_RAILS 5
 #define MAX_THRESHOLD 2
@@ -65,8 +67,9 @@ static struct completion hotplug_notify_complete;
 static struct completion freq_mitigation_complete;
 static struct completion thermal_monitor_complete;
 
-static int enabled;
+static int enabled = 1;
 static int polling_enabled;
+static int is_throttling = 0;
 static int rails_cnt;
 static int psm_rails_cnt;
 static int ocr_rail_cnt;
@@ -817,7 +820,7 @@ static int msm_thermal_get_freq_table(void)
 		i++;
 
 	limit_idx_low = 0;
-	limit_idx_high = limit_idx = i - 1;
+	limit_idx_high = limit_idx = i;
 	BUG_ON(limit_idx_high <= 0 || limit_idx_high <= limit_idx_low);
 fail:
 	return ret;
@@ -935,6 +938,7 @@ static void __ref do_core_control(long temp)
 {
 	int i = 0;
 	int ret = 0;
+	policy = cpufreq_cpu_get(0);
 
 	if (!core_control_enabled)
 		return;
@@ -1225,6 +1229,10 @@ static void __ref do_freq_control(long temp)
 	uint32_t max_freq = cpus[cpu].limited_max_freq;
 
 	if (temp >= msm_thermal_info.limit_temp_degC) {
+		if ( !is_throttling ) {
+			user_policy_max_freq = policy->max;
+			is_throttling = 1;
+		}
 		if (limit_idx == limit_idx_low)
 			return;
 
