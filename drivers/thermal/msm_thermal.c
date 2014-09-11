@@ -1230,7 +1230,6 @@ static void __ref do_freq_control(long temp)
 
 	if (temp >= msm_thermal_info.limit_temp_degC) {
 		if ( !is_throttling ) {
-			user_policy_max_freq = policy->max;
 			is_throttling = 1;
 		}
 		if (limit_idx == limit_idx_low)
