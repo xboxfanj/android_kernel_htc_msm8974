@@ -307,7 +307,7 @@ int blkdev_issue_flush(struct block_device *bdev, gfp_t gfp_mask,
 
 	bio_get(bio);
 	submit_bio(WRITE_FLUSH, bio);
-	wait_for_completion_io(&wait);
+	wait_for_completion(&wait);
 
 	if (error_sector)
                *error_sector = bio->bi_sector;
