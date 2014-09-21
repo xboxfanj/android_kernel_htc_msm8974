@@ -28,7 +28,8 @@ enum {
 	PM_QOS_GPU_FREQ_MAX,
 	PM_QOS_EMC_FREQ_MIN,
 
-	
+	/* insert new class ID */
+
 	PM_QOS_NUM_CLASSES,
 };
 
@@ -101,8 +102,8 @@ struct dev_pm_qos_request {
 
 enum pm_qos_type {
 	PM_QOS_UNITIALIZED,
-	PM_QOS_MAX,		
-	PM_QOS_MIN		
+	PM_QOS_MAX,		/* return the largest value */
+	PM_QOS_MIN		/* return the smallest value */
 };
 
 /**
@@ -168,7 +169,7 @@ struct pm_qos_bounded_constraint {
  */
 struct pm_qos_constraints {
 	struct plist_head list;
-	s32 target_value;	
+	s32 target_value;	/* Do not change to 64 bit */
 	s32 default_value;
 	enum pm_qos_type type;
 	struct blocking_notifier_head *notifiers;
@@ -188,20 +189,16 @@ struct dev_pm_qos {
 	struct dev_pm_qos_request *flags_req;
 };
 
-struct dev_pm_qos {
-	struct pm_qos_constraints latency;
-};
-
 /* Action requested to pm_qos_update_target */
 enum pm_qos_req_action {
-	PM_QOS_ADD_REQ,		
-	PM_QOS_UPDATE_REQ,	
-	PM_QOS_REMOVE_REQ	
+	PM_QOS_ADD_REQ,		/* Add a new request */
+	PM_QOS_UPDATE_REQ,	/* Update an existing request */
+	PM_QOS_REMOVE_REQ	/* Remove an existing request */
 };
 
 static inline int dev_pm_qos_request_active(struct dev_pm_qos_request *req)
 {
-	return req->dev != 0;
+	return req->dev != NULL;
 }
 
 int pm_qos_update_target(struct pm_qos_constraints *c, struct plist_node *node,
