@@ -118,7 +118,7 @@ static void csd_unlock(struct call_single_data *csd)
 }
 
 static
-void generic_exec_single(int cpu, struct call_single_data *cssd, int wait)
+void generic_exec_single(int cpu, struct call_single_data *csd, int wait)
 {
 	struct call_single_queue *dst = &per_cpu(call_single_queue, cpu);
 	unsigned long flags;
@@ -250,7 +250,7 @@ void __smp_call_function_single(int cpu, struct call_single_data *csd,
 
 	if (cpu == this_cpu) {
 		local_irq_save(flags);
-		csd->func(data->info);
+		csd->func(csd->info);
 		local_irq_restore(flags);
 	} else {
 		WARN_ON_ONCE(cpu_online(smp_processor_id()) && wait
@@ -296,15 +296,15 @@ void smp_call_function_many(const struct cpumask *mask,
 	cpumask_clear_cpu(this_cpu, cfd->cpumask);
 
 	/* Some callers race with other cpus changing the passed mask */
-	if (unlikely(!cpumask_weight(data->cpumask)))
+	if (unlikely(!cpumask_weight(cfd->cpumask)))
 		return;
 
 	/*
-	 * After we put an entry into the list, data->cpumask
+	 * After we put an entry into the list, cfd->cpumask
 	 * may be cleared again when another CPU sends another IPI for
-	 * a SMP function call, so data->cpumask will be zero.
+	 * a SMP function call, so cfd->cpumask will be zero.
 	 */
-	cpumask_copy(cfd->cpumask_ipi, data->cpumask);
+	cpumask_copy(cfd->cpumask_ipi, cfd->cpumask);
 
 	for_each_cpu(cpu, cfd->cpumask) {
 		struct call_single_data *csd = per_cpu_ptr(cfd->csd, cpu);
