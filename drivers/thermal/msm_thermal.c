@@ -1274,6 +1274,9 @@ static void __ref check_temp(struct work_struct *work)
 	long temp = 0;
 	int ret = 0;
 
+	if (!msm_thermal_probed)
+		return;
+
 	ret = therm_get_temp(msm_thermal_info.sensor_id, THERM_TSENS_ID, &temp);
 	if (ret) {
 		pr_err("Unable to read TSENS sensor:%d. err:%d\n",

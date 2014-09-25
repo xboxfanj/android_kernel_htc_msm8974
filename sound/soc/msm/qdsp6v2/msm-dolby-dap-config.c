@@ -210,6 +210,14 @@ const struct dolby_dap_endp_params_s
 		 DOLBY_ENDDEP_PARAM_VMB_OFFSET},
 		{-320, -320, 144}
 	},
+	{PROXY,	6, DOLBY_ENDP_EXT_SPEAKERS,
+		{DOLBY_PARAM_ID_DVLO, DOLBY_PARAM_ID_DVLI, DOLBY_PARAM_ID_VMB},
+		{DOLBY_ENDDEP_PARAM_DVLO_LENGTH, DOLBY_ENDDEP_PARAM_DVLI_LENGTH,
+		 DOLBY_ENDDEP_PARAM_VMB_LENGTH},
+		{DOLBY_ENDDEP_PARAM_DVLO_OFFSET, DOLBY_ENDDEP_PARAM_DVLI_OFFSET,
+		 DOLBY_ENDDEP_PARAM_VMB_OFFSET},
+		{-320, -320, 144}
+	},
 	{FM, 2, DOLBY_ENDP_HDMI,
 		{DOLBY_PARAM_ID_DVLO, DOLBY_PARAM_ID_DVLI, DOLBY_PARAM_ID_VMB},
 		{DOLBY_ENDDEP_PARAM_DVLO_LENGTH, DOLBY_ENDDEP_PARAM_DVLI_LENGTH,
@@ -394,7 +402,8 @@ static int dolby_dap_send_enddep_params(int port_id, int device_channels)
 	for (idx = 0; idx < NUM_DOLBY_ENDP_DEVICE; idx++) {
 		if (dolby_dap_endp_params[idx].device ==
 			dolby_dap_params_states.device) {
-			if (dolby_dap_params_states.device == AUX_DIGITAL) {
+			if (dolby_dap_params_states.device == AUX_DIGITAL ||
+			    dolby_dap_params_states.device == PROXY) {
 				if (dolby_dap_endp_params[idx].device_ch_caps ==
 					device_channels)
 					break;
@@ -648,7 +657,7 @@ int msm_routing_get_dolby_dap_param_to_get_control(
 	int port_id = dolby_dap_params_states.port_id;
 
 	if (port_id == DOLBY_INVALID_PORT_ID) {
-		pr_err("%s, port_id not set, returning error", __func__);
+		pr_debug("%s, port_id not set, returning error", __func__);
 		return -EINVAL;
 	}
 	params_value = kzalloc(params_length, GFP_KERNEL);

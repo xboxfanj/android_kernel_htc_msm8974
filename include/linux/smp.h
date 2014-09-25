@@ -54,14 +54,20 @@ void __smp_call_function_single(int cpuid, struct call_single_data *data,
 int smp_call_function_any(const struct cpumask *mask,
 			  smp_call_func_t func, void *info, int wait);
 
+void kick_all_cpus_sync(void);
+
+/*
+ * Generic and arch helpers
+ */
 #ifdef CONFIG_USE_GENERIC_SMP_HELPERS
 void __init call_function_init(void);
 void generic_smp_call_function_single_interrupt(void);
-void generic_smp_call_function_interrupt(void);
 void ipi_call_lock(void);
 void ipi_call_unlock(void);
 void ipi_call_lock_irq(void);
 void ipi_call_unlock_irq(void);
+#define generic_smp_call_function_interrupt \
+	generic_smp_call_function_single_interrupt
 #else
 static inline void call_function_init(void) { }
 #endif
@@ -133,8 +139,25 @@ smp_call_function_any(const struct cpumask *mask, smp_call_func_t func,
 	return smp_call_function_single(0, func, info, wait);
 }
 
-#endif 
+static inline void kick_all_cpus_sync(void) {  }
 
+#endif /* !SMP */
+
+/*
+ * smp_processor_id(): get the current CPU ID.
+ *
+ * if DEBUG_PREEMPT is enabled then we check whether it is
+ * used in a preemption-safe way. (smp_processor_id() is safe
+ * if it's used in a preemption-off critical section, or in
+ * a thread that is bound to the current CPU.)
+ *
+ * NOTE: raw_smp_processor_id() is for internal use only
+ * (smp_processor_id() is the preferred variant), but in rare
+ * instances it might also be used to turn off false positives
+ * (i.e. smp_processor_id() use that the debugging code reports but
+ * which use for some reason is legal). Don't use this to hack around
+ * the warning message, as your code might not work under PREEMPT.
+ */
 #ifdef CONFIG_DEBUG_PREEMPT
   extern unsigned int debug_smp_processor_id(void);
 # define smp_processor_id() debug_smp_processor_id()

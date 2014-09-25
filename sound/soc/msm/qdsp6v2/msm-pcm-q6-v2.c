@@ -32,12 +32,17 @@
 #include <linux/msm_audio_ion.h>
 
 #include <linux/of_device.h>
+#include <sound/tlv.h>
 #include <sound/pcm_params.h>
 
 #include "msm-pcm-q6-v2.h"
 #include "msm-pcm-routing-v2.h"
 
 static struct audio_locks the_locks;
+
+#define PCM_MASTER_VOL_MAX_STEPS	0x2000
+static const DECLARE_TLV_DB_LINEAR(msm_pcm_vol_gain, 0,
+				PCM_MASTER_VOL_MAX_STEPS);
 
 struct snd_msm {
 	struct snd_card *card;
@@ -52,6 +57,8 @@ struct snd_msm {
 #define CAPTURE_MAX_NUM_PERIODS     8
 #define CAPTURE_MAX_PERIOD_SIZE     4096
 #define CAPTURE_MIN_PERIOD_SIZE     320
+#define CMD_EOS_MIN_TIMEOUT_LENGTH  50
+#define CMD_EOS_TIMEOUT_MULTIPLIER  (HZ * 50)
 
 static struct snd_pcm_hardware msm_pcm_hardware_capture = {
 	.info =                 (SNDRV_PCM_INFO_MMAP |
@@ -191,7 +198,16 @@ static void event_handler(uint32_t opcode,
 			pr_debug("%s: reclaim flushed buf in_count %x\n",
 				__func__, atomic_read(&prtd->in_count));
 			prtd->pcm_irq_pos += prtd->pcm_count;
-			atomic_inc(&prtd->in_count);
+			if (prtd->mmap_flag) {
+				if (q6asm_is_cpu_buf_avail_nolock(OUT,
+				    prtd->audio_client,
+				    &size, &idx) &&
+				    (substream->runtime->status->state ==
+				    SNDRV_PCM_STATE_RUNNING))
+					q6asm_read_nolock(prtd->audio_client);
+			} else {
+				atomic_inc(&prtd->in_count);
+			}
 			if (atomic_read(&prtd->in_count) == prtd->periods) {
 				pr_info("%s: reclaimed all bufs\n", __func__);
 				if (atomic_read(&prtd->start))
@@ -605,6 +621,7 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
 	struct msm_audio *prtd = runtime->private_data;
+	uint32_t timeout;
 	int dir = 0;
 	int ret = 0;
 
@@ -612,9 +629,23 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 
 	if (prtd->audio_client) {
 		dir = IN;
+
+		/* determine timeout length */
+		if (runtime->frame_bits == 0 || runtime->rate == 0) {
+			timeout = CMD_EOS_MIN_TIMEOUT_LENGTH;
+		} else {
+			timeout = (runtime->period_size *
+					CMD_EOS_TIMEOUT_MULTIPLIER) /
+					((runtime->frame_bits / 8) *
+					 runtime->rate);
+			if (timeout < CMD_EOS_MIN_TIMEOUT_LENGTH)
+				timeout = CMD_EOS_MIN_TIMEOUT_LENGTH;
+		}
+		pr_debug("%s: CMD_EOS timeout is %d\n", __func__, timeout);
+
 		ret = wait_event_timeout(the_locks.eos_wait,
 					 !test_bit(CMD_EOS, &prtd->cmd_pending),
-					 5 * HZ);
+					 timeout);
 		if (!ret)
 			pr_err("%s: CMD_EOS failed, cmd_pending 0x%lx\n",
 			       __func__, prtd->cmd_pending);
@@ -854,6 +885,94 @@ static struct snd_pcm_ops msm_pcm_ops = {
 	.mmap		= msm_pcm_mmap,
 };
 
+static int msm_pcm_set_volume(struct msm_audio *prtd, uint32_t volume)
+{
+	int rc = 0;
+
+	if (prtd && prtd->audio_client) {
+		pr_debug("%s: channels %d volume 0x%x\n", __func__,
+				prtd->channel_mode, volume);
+		rc = q6asm_set_volume(prtd->audio_client, volume);
+		if (rc < 0) {
+			pr_err("%s: Send Volume command failed rc=%d\n",
+					__func__, rc);
+		}
+	}
+	return rc;
+}
+
+static int msm_pcm_volume_ctl_get(struct snd_kcontrol *kcontrol,
+		      struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_pcm_volume *vol = snd_kcontrol_chip(kcontrol);
+	struct snd_pcm_substream *substream =
+		vol->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
+	struct msm_audio *prtd;
+
+	pr_debug("%s\n", __func__);
+	if (!substream) {
+		pr_err("%s substream not found\n", __func__);
+		return -ENODEV;
+	}
+	if (!substream->runtime) {
+		pr_err("%s substream runtime not found\n", __func__);
+		return 0;
+	}
+	prtd = substream->runtime->private_data;
+	if (prtd)
+		ucontrol->value.integer.value[0] = prtd->volume;
+	return 0;
+}
+
+static int msm_pcm_volume_ctl_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	int rc = 0;
+	struct snd_pcm_volume *vol = snd_kcontrol_chip(kcontrol);
+	struct snd_pcm_substream *substream =
+		vol->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
+	struct msm_audio *prtd;
+	int volume = ucontrol->value.integer.value[0];
+
+	pr_debug("%s: volume : 0x%x\n", __func__, volume);
+	if (!substream) {
+		pr_err("%s substream not found\n", __func__);
+		return -ENODEV;
+	}
+	if (!substream->runtime) {
+		pr_err("%s substream runtime not found\n", __func__);
+		return 0;
+	}
+	prtd = substream->runtime->private_data;
+	if (prtd) {
+		rc = msm_pcm_set_volume(prtd, volume);
+		prtd->volume = volume;
+	}
+	return rc;
+}
+
+static int msm_pcm_add_volume_control(struct snd_soc_pcm_runtime *rtd)
+{
+	int ret = 0;
+	struct snd_pcm *pcm = rtd->pcm;
+	struct snd_pcm_volume *volume_info;
+	struct snd_kcontrol *kctl;
+
+	dev_dbg(rtd->dev, "%s, Volume control add\n", __func__);
+	ret = snd_pcm_add_volume_ctls(pcm, SNDRV_PCM_STREAM_PLAYBACK,
+			NULL, 1, rtd->dai_link->be_id,
+			&volume_info);
+	if (ret < 0) {
+		pr_err("%s volume control failed ret %d\n", __func__, ret);
+		return ret;
+	}
+	kctl = volume_info->kctl;
+	kctl->put = msm_pcm_volume_ctl_put;
+	kctl->get = msm_pcm_volume_ctl_get;
+	kctl->tlv.p = msm_pcm_vol_gain;
+	return 0;
+}
+
 static int msm_pcm_chmap_ctl_put(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
@@ -940,6 +1059,10 @@ static int msm_asoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
 		__func__, kctl->id.name);
 	kctl->put = msm_pcm_chmap_ctl_put;
 	kctl->get = msm_pcm_chmap_ctl_get;
+	ret = msm_pcm_add_volume_control(rtd);
+	if (ret)
+		pr_err("%s: Could not add pcm Volume Control %d\n",
+			__func__, ret);
 	return ret;
 }
 
@@ -956,9 +1079,9 @@ static __devinit int msm_pcm_probe(struct platform_device *pdev)
 	const char *latency_level;
 
 	rc = of_property_read_u32(pdev->dev.of_node,
-				"qti,msm-pcm-dsp-id", &id);
+				"qcom,msm-pcm-dsp-id", &id);
 	if (rc) {
-		dev_err(&pdev->dev, "%s: qti,msm-pcm-dsp-id missing in DT node\n",
+		dev_err(&pdev->dev, "%s: qcom,msm-pcm-dsp-id missing in DT node\n",
 					__func__);
 		return rc;
 	}
@@ -970,11 +1093,11 @@ static __devinit int msm_pcm_probe(struct platform_device *pdev)
 	}
 
 	if (of_property_read_bool(pdev->dev.of_node,
-				"qti,msm-pcm-low-latency")) {
+				"qcom,msm-pcm-low-latency")) {
 
 		pdata->perf_mode = LOW_LATENCY_PCM_MODE;
 		rc = of_property_read_string(pdev->dev.of_node,
-			"qti,latency-level", &latency_level);
+			"qcom,latency-level", &latency_level);
 		if (!rc) {
 			if (!strcmp(latency_level, "ultra"))
 				pdata->perf_mode = ULTRA_LOW_LATENCY_PCM_MODE;
@@ -1002,7 +1125,7 @@ static int msm_pcm_remove(struct platform_device *pdev)
 	return 0;
 }
 static const struct of_device_id msm_pcm_dt_match[] = {
-	{.compatible = "qti,msm-pcm-dsp"},
+	{.compatible = "qcom,msm-pcm-dsp"},
 	{}
 };
 MODULE_DEVICE_TABLE(of, msm_pcm_dt_match);

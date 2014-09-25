@@ -3,6 +3,8 @@
  *
  *  Copyright (C) 1995-1999 Russell King
  *
+ *  Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -18,6 +20,7 @@
 #include <asm/hw_breakpoint.h>
 #include <asm/ptrace.h>
 #include <asm/types.h>
+#include <asm/system.h>
 
 #ifdef __KERNEL__
 #define STACK_TOP	((current->personality & ADDR_LIMIT_32BIT) ? \
@@ -118,4 +121,6 @@ static inline void prefetch(const void *ptr)
 
 #endif
 
-#endif 
+#include <asm-generic/processor.h>
+
+#endif /* __ASM_ARM_PROCESSOR_H */

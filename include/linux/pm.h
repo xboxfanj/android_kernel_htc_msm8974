@@ -191,6 +191,7 @@ struct dev_pm_info {
 	bool			is_prepared:1;	
 	bool			is_suspended:1;	
 	bool			ignore_children:1;
+	bool			early_init:1;	/* Owned by the PM core */
 	spinlock_t		lock;
 #ifdef CONFIG_PM_SLEEP
 	struct list_head	entry;
@@ -227,10 +228,9 @@ struct dev_pm_info {
 	unsigned long		accounting_timestamp;
 	ktime_t			suspend_time;
 	s64			max_time_suspended_ns;
-	struct dev_pm_qos_request *pq_req;
 #endif
-	struct pm_subsys_data	*subsys_data;  
-	struct pm_qos_constraints *constraints;
+	struct pm_subsys_data	*subsys_data;  /* Owned by the subsystem. */
+	struct dev_pm_qos	*qos;
 };
 
 extern void update_pm_runtime_accounting(struct device *dev);
