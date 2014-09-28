@@ -46,7 +46,7 @@
 #define MAX_UDELAY		2000
 
 //gboost
-int graphics_boost = 4;
+int graphics_boost = 6;
 
 struct clk_pair {
 	const char *name;
