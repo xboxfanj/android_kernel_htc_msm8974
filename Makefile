@@ -346,27 +346,16 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-MODFLAGS        = -DMODULE \
-                  -mfpu=neon-vfpv4 \
-		  -mcpu=cortex-a15 \
-                  -mtune=cortex-a15 \
-		  -fgcse-las \
-		  -fpredictive-commoning \
-                  -O2 -DNDEBUG
+MODFLAGS	= -marm -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4 \
+                  -mvectorize-with-neon-quad -fgcse-after-reload -fgcse-sm \
+                  -fgcse-las -ftree-loop-im -ftree-loop-ivcanon -fivopts \
+                  -ftree-vectorize -fmodulo-sched -ffast-math
 
-CFLAGS_MODULE   = $(MODFLAGS)
-AFLAGS_MODULE   = $(MODFLAGS)
+CFLAGS_MODULE   = -DMODULE $(MODFLAGS)
+AFLAGS_MODULE   = -DMODULE $(MODFLAGS)
 LDFLAGS_MODULE  = -T $(srctree)/scripts/module-common.lds
-CFLAGS_KERNEL   = -mfpu=neon-vfpv4 \
-		  -mcpu=cortex-a15
-                  -mtune=cortex-a15 \
-		  -fgcse-las \
-		  -fpredictive-commoning \
-                  -O2 -DNDEBUG
+CFLAGS_KERNEL   = $(MODFLAGS)
 
-ifdef CONFIG_CC_GRAPHITE_OPTIMIZATION
-CFLAGS_KERNEL	+= -fgraphite-identity -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block
-endif
 AFLAGS_KERNEL	=
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
@@ -380,18 +369,13 @@ LINUXINCLUDE    := -I$(srctree)/arch/$(hdr-arch)/include \
 
 KBUILD_CPPFLAGS := -D__KERNEL__
 
-CFLAGS_A15 = -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4
-CFLAGS_MODULO = -fmodulo-sched -fmodulo-sched-allow-regmoves
-KERNEL_MODS        = $(CFLAGS_A15) $(CFLAGS_MODULO) -DNDEBUG
- 
 KBUILD_CFLAGS   := -O2 -DNDEBUG -funswitch-loops \
  		           -Wundef -Wstrict-prototypes -Wno-trigraphs \
  		           -fno-strict-aliasing -fno-common \
  		           -Werror-implicit-function-declaration \
  		           -Wno-format-security \
-		           -fno-delete-null-pointer-checks -mno-unaligned-access \
-			   -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4 \
-			   -funsafe-math-optimizations -ftree-vectorize
+		           -fno-delete-null-pointer-checks \
+			   $(MODFLAGS)
  		           
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
@@ -620,8 +604,10 @@ KBUILD_CFLAGS	+= -fomit-frame-pointer
 #endif
 #endif
 
+KBUILD_CFLAGS += $(call cc-option, -fno-var-tracking-assignments)
+
 ifdef CONFIG_DEBUG_INFO
-KBUILD_CFLAGS	+= -gdwarf-2
+KBUILD_CFLAGS	+= -g
 KBUILD_AFLAGS	+= -gdwarf-2
 endif
 
