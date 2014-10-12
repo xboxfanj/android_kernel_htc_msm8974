@@ -125,8 +125,6 @@ static int emulate_swpX(unsigned int address, unsigned int *data,
 	while (1) {
 		unsigned long temp;
 
-		smp_mb();
-
 		if (type == TYPE_SWPB)
 			__user_swpb_asm(*data, address, res, temp);
 		else
@@ -139,7 +137,6 @@ static int emulate_swpX(unsigned int address, unsigned int *data,
 	}
 
 	if (res == 0) {
-		smp_mb();
 
 		if (type == TYPE_SWPB)
 			swpbcounter++;
