@@ -27,6 +27,7 @@ extern int msm_krait_need_wfe_fixup;
 "10:	msr	cpsr_cf, " tmp "\n"
 #else
 #define WFE_SAFE(fixup, tmp)	"	wfe\n"
+#endif
 
 /*
  * sev and wfe are ARMv6K extensions.  Uniprocessor ARMv6 may not have the K
@@ -370,4 +371,4 @@ static inline int arch_read_trylock(arch_rwlock_t *rw)
 #define arch_read_relax(lock)	cpu_relax()
 #define arch_write_relax(lock)	cpu_relax()
 
-#endif 
+#endif
