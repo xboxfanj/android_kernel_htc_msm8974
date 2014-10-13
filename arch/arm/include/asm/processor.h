@@ -21,6 +21,7 @@
 #include <asm/ptrace.h>
 #include <asm/types.h>
 #include <asm/system.h>
+#include <asm/unified.h>
 
 #ifdef __KERNEL__
 #define STACK_TOP	((current->personality & ADDR_LIMIT_32BIT) ? \
@@ -97,6 +98,20 @@ extern int kernel_thread(int (*fn)(void *), void *arg, unsigned long flags);
 #define KSTK_EIP(tsk)	task_pt_regs(tsk)->ARM_pc
 #define KSTK_ESP(tsk)	task_pt_regs(tsk)->ARM_sp
 
+#ifdef CONFIG_SMP
+#define __ALT_SMP_ASM(smp, up)						\
+	"9998:	" smp "\n"						\
+	"	.pushsection \".alt.smp.init\", \"a\"\n"		\
+	"	.long	9998b\n"					\
+	"	" up "\n"						\
+	"	.popsection\n"
+#else
+#define __ALT_SMP_ASM(smp, up)	up
+#endif
+
+/*
+ * Prefetching support - only ARMv5.
+ */
 #if __LINUX_ARM_ARCH__ >= 5
 
 #define ARCH_HAS_PREFETCH
