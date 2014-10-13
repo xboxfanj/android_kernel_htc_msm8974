@@ -321,5 +321,5 @@ config HTC_PNPMGR
 
 config SUSPEND_ONLY_ALLOW_WFI
 	bool "Only allow wfi when entering suspend"
-	def_bool y
+	bool
 	depends on SUSPEND
