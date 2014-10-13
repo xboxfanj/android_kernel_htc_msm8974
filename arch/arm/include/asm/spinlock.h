@@ -9,16 +9,6 @@
 
 extern int msm_krait_need_wfe_fixup;
 
-#ifdef CONFIG_THUMB2_KERNEL
-#define WFE()		ALT_SMP(		\
-	"wfe.w",				\
-	"nop.w"					\
-)
-#else
-#define SEV		ALT_SMP("sev", "nop")
-#define WFE()		ALT_SMP("wfe", "nop")
-#endif
-
 #ifdef CONFIG_MSM_KRAIT_WFE_FIXUP
 #define WFE_SAFE(fixup, tmp) 				\
 "	mrs	" tmp ", cpsr\n"			\
