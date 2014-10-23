@@ -1028,7 +1028,7 @@ static ssize_t store_min_sampling_rate(struct kobject *a, struct attribute *b,
 
 #define define_global_rw_attr(_name)		\
 static struct global_attr _name##_attr =	\
-	__ATTR(_name, 0644, show_##_name, store_##_name)
+	__ATTR(_name, 0666, show_##_name, store_##_name)
 
 #define define_global_ro_attr(_name)		\
 static struct global_attr _name##_attr =	\
@@ -1051,7 +1051,7 @@ define_global_rw_attr(ignore_nice);
 define_global_rw_attr(ramp_up_during_boost);
 define_global_rw_attr(awake_ideal_freq);
 define_global_rw_attr(suspend_ideal_freq);
-define_global_ro_attr(min_sampling_rate);
+define_global_rw_attr(min_sampling_rate);
 
 static struct attribute * smartmax_attributes[] = {
 	&debug_mask_attr.attr,
