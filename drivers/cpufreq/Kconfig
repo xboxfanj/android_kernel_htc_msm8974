@@ -130,6 +130,30 @@ config CPU_FREQ_DEFAULT_GOV_SMARTMAX
         help
           Use the CPUFreq governor 'smartmax' as default
 
+endchoice
+
+config CPU_FREQ_GOV_PERFORMANCE
+	tristate "'performance' governor"
+	help
+	  This cpufreq governor sets the frequency statically to the
+	  highest available CPU frequency.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called cpufreq_performance.
+
+	  If in doubt, say Y.
+
+config CPU_FREQ_GOV_POWERSAVE
+	tristate "'powersave' governor"
+	help
+	  This cpufreq governor sets the frequency statically to the
+	  lowest available CPU frequency.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called cpufreq_powersave.
+
+	  If in doubt, say Y.
+
 config CPU_FREQ_GOV_USERSPACE
 	tristate "'userspace' governor for userspace frequency scaling"
 	help
