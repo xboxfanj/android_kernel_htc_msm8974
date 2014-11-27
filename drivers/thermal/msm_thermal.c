@@ -1478,7 +1478,6 @@ static __ref int do_freq_mitigation(void *data)
 		wait_for_completion_interruptible(&freq_mitigation_complete);
 		INIT_COMPLETION(freq_mitigation_complete);
 
-		get_online_cpus();
 		for_each_possible_cpu(cpu) {
 			max_freq_req = (cpus[cpu].max_freq) ?
 					msm_thermal_info.freq_limit :
@@ -1506,7 +1505,6 @@ reset_threshold:
 				cpus[cpu].freq_thresh_clear = false;
 			}
 		}
-		put_online_cpus();
 	}
 	return ret;
 }
