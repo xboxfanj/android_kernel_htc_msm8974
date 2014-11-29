@@ -34,7 +34,6 @@
 static void sync_fence_signal_pt(struct sync_pt *pt);
 static int _sync_pt_has_signaled(struct sync_pt *pt);
 static void sync_fence_free(struct kref *kref);
-static void sync_dump(struct sync_fence *fence);
 
 static LIST_HEAD(sync_timeline_list_head);
 static DEFINE_SPINLOCK(sync_timeline_list_lock);
@@ -94,6 +93,9 @@ void sync_timeline_destroy(struct sync_timeline *obj)
 	obj->destroyed = true;
 	smp_wmb();
 
+	/*
+	 * signal any children that their parent is going away.
+	 */
 	sync_timeline_signal(obj);
 
 	kref_put(&obj->kref, sync_timeline_free);
@@ -194,6 +196,7 @@ void sync_pt_free(struct sync_pt *pt)
 }
 EXPORT_SYMBOL(sync_pt_free);
 
+/* call with pt->parent->active_list_lock held */
 static int _sync_pt_has_signaled(struct sync_pt *pt)
 {
 	int old_status = pt->status;
@@ -215,6 +218,7 @@ static struct sync_pt *sync_pt_dup(struct sync_pt *pt)
 	return pt->parent->ops->dup(pt);
 }
 
+/* Adds a sync pt to the active queue.  Called when added to a fence */
 static void sync_pt_activate(struct sync_pt *pt)
 {
 	struct sync_timeline *obj = pt->parent;
@@ -279,6 +283,7 @@ err:
 	return NULL;
 }
 
+/* TODO: implement a create which takes more that one sync_pt */
 struct sync_fence *sync_fence_create(const char *name, struct sync_pt *pt)
 {
 	struct sync_fence *fence;
@@ -294,6 +299,10 @@ struct sync_fence *sync_fence_create(const char *name, struct sync_pt *pt)
 	list_add(&pt->pt_list, &fence->pt_list_head);
 	sync_pt_activate(pt);
 
+	/*
+	 * signal the fence in case pt was activated before
+	 * sync_pt_activate(pt) was called
+	 */
 	sync_fence_signal_pt(pt);
 
 	return fence;
@@ -331,6 +340,10 @@ static int sync_fence_merge_pts(struct sync_fence *dst, struct sync_fence *src)
 		list_for_each_safe(dst_pos, n, &dst->pt_list_head) {
 			struct sync_pt *dst_pt =
 				container_of(dst_pos, struct sync_pt, pt_list);
+			/* collapse two sync_pts on the same timeline
+			 * to a single sync_pt that will signal at
+			 * the later of the two
+			 */
 			if (dst_pt->parent == src_pt->parent) {
 				if (dst_pt->parent->ops->compare(dst_pt, src_pt) == -1) {
 					struct sync_pt *new_pt =
@@ -457,6 +470,10 @@ struct sync_fence *sync_fence_merge(const char *name,
 		sync_pt_activate(pt);
 	}
 
+	/*
+	 * signal the fence in case one of it's pts were activated before
+	 * they were activated
+	 */
 	sync_fence_signal_pt(list_first_entry(&fence->pt_list_head,
 					      struct sync_pt,
 					      pt_list));
@@ -481,6 +498,10 @@ static void sync_fence_signal_pt(struct sync_pt *pt)
 	status = sync_fence_get_status(fence);
 
 	spin_lock_irqsave(&fence->waiter_list_lock, flags);
+	/*
+	 * this should protect against two threads racing on the signaled
+	 * false -> true transition
+	 */
 	if (status && !fence->status) {
 		list_for_each_safe(pos, n, &fence->waiter_list_head)
 			list_move(pos, &signaled_waiters);
@@ -534,6 +555,11 @@ int sync_fence_cancel_async(struct sync_fence *fence,
 	int ret = -ENOENT;
 
 	spin_lock_irqsave(&fence->waiter_list_lock, flags);
+	/*
+	 * Make sure waiter is still in waiter_list because it is possible for
+	 * the waiter to be removed from the list while the callback is still
+	 * pending.
+	 */
 	list_for_each_safe(pos, n, &fence->waiter_list_head) {
 		struct sync_fence_waiter *list_waiter =
 			container_of(pos, struct sync_fence_waiter,
@@ -551,9 +577,81 @@ EXPORT_SYMBOL(sync_fence_cancel_async);
 
 static bool sync_fence_check(struct sync_fence *fence)
 {
+	/*
+	 * Make sure that reads to fence->status are ordered with the
+	 * wait queue event triggering
+	 */
 	smp_rmb();
 	return fence->status != 0;
 }
+
+static const char *sync_status_str(int status)
+{
+	if (status > 0)
+		return "signaled";
+	else if (status == 0)
+		return "active";
+	else
+		return "error";
+}
+
+static void sync_pt_log(struct sync_pt *pt)
+{
+	int status = pt->status;
+	pr_cont("  %s_pt %s",
+		   pt->parent->name,
+		   sync_status_str(status));
+
+	if (pt->status) {
+		struct timeval tv = ktime_to_timeval(pt->timestamp);
+		pr_cont("@%ld.%06ld", tv.tv_sec, tv.tv_usec);
+	}
+
+	if (pt->parent->ops->timeline_value_str &&
+	    pt->parent->ops->pt_value_str) {
+		char value[64];
+		pt->parent->ops->pt_value_str(pt, value, sizeof(value));
+		pr_cont(": %s", value);
+		pt->parent->ops->timeline_value_str(pt->parent, value,
+					    sizeof(value));
+		pr_cont(" / %s", value);
+	}
+
+	pr_cont("\n");
+
+	/* Show additional details for active fences */
+	if (pt->status == 0 && pt->parent->ops->pt_log)
+		pt->parent->ops->pt_log(pt);
+}
+
+void sync_fence_log(struct sync_fence *fence)
+{
+	struct list_head *pos;
+	unsigned long flags;
+
+	pr_info("[%p] %s: %s\n", fence, fence->name,
+		sync_status_str(fence->status));
+
+	pr_info("waiters:\n");
+
+	spin_lock_irqsave(&fence->waiter_list_lock, flags);
+	list_for_each(pos, &fence->waiter_list_head) {
+		struct sync_fence_waiter *waiter =
+			container_of(pos, struct sync_fence_waiter,
+				     waiter_list);
+
+		pr_info(" %pF\n", waiter->callback);
+	}
+	spin_unlock_irqrestore(&fence->waiter_list_lock, flags);
+
+	pr_info("syncpoints:\n");
+	list_for_each(pos, &fence->pt_list_head) {
+		struct sync_pt *pt =
+			container_of(pos, struct sync_pt, pt_list);
+		sync_pt_log(pt);
+	}
+}
+EXPORT_SYMBOL(sync_fence_log);
 
 int sync_fence_wait(struct sync_fence *fence, long timeout)
 {
@@ -580,7 +678,7 @@ int sync_fence_wait(struct sync_fence *fence, long timeout)
 
 	if (fence->status < 0) {
 		pr_info("fence error %d on [%p]\n", fence->status, fence);
-		sync_dump(fence);
+		sync_fence_log(fence);
 		return fence->status;
 	}
 
@@ -588,7 +686,7 @@ int sync_fence_wait(struct sync_fence *fence, long timeout)
 		if (timeout > 0) {
 			pr_info("fence timeout on [%p] after %dms\n", fence,
 				jiffies_to_msecs(timeout));
-			sync_dump(fence);
+			sync_fence_log(fence);
 		}
 		return -ETIME;
 	}
@@ -611,10 +709,20 @@ static int sync_fence_release(struct inode *inode, struct file *file)
 	struct sync_fence *fence = file->private_data;
 	unsigned long flags;
 
+	/*
+	 * We need to remove all ways to access this fence before droping
+	 * our ref.
+	 *
+	 * start with its membership in the global fence list
+	 */
 	spin_lock_irqsave(&sync_fence_list_lock, flags);
 	list_del(&fence->sync_fence_list);
 	spin_unlock_irqrestore(&sync_fence_list_lock, flags);
 
+	/*
+	 * remove its pts from their parents so that sync_timeline_signal()
+	 * can't reference the fence.
+	 */
 	sync_fence_detach_pts(fence);
 
 	kref_put(&fence->kref, sync_fence_free);
@@ -628,6 +736,10 @@ static unsigned int sync_fence_poll(struct file *file, poll_table *wait)
 
 	poll_wait(file, &fence->wq, wait);
 
+	/*
+	 * Make sure that reads to fence->status are ordered with the
+	 * wait queue event triggering
+	 */
 	smp_rmb();
 
 	if (fence->status == 1)
@@ -796,16 +908,6 @@ static long sync_fence_ioctl(struct file *file, unsigned int cmd,
 }
 
 #ifdef CONFIG_DEBUG_FS
-static const char *sync_status_str(int status)
-{
-	if (status > 0)
-		return "signaled";
-	else if (status == 0)
-		return "active";
-	else
-		return "error";
-}
-
 static void sync_print_pt(struct seq_file *s, struct sync_pt *pt, bool fence)
 {
 	int status = pt->status;
@@ -938,35 +1040,4 @@ static __init int sync_debugfs_init(void)
 	return 0;
 }
 late_initcall(sync_debugfs_init);
-
-#define DUMP_CHUNK 256
-static char sync_dump_buf[64 * 1024];
-static void sync_dump(struct sync_fence *fence)
-{
-       struct seq_file s = {
-               .buf = sync_dump_buf,
-               .size = sizeof(sync_dump_buf) - 1,
-       };
-       int i;
-
-       seq_printf(&s, "fence:\n--------------\n");
-       sync_print_fence(&s, fence);
-       seq_printf(&s, "\n");
-
-       for (i = 0; i < s.count; i += DUMP_CHUNK) {
-               if ((s.count - i) > DUMP_CHUNK) {
-                       char c = s.buf[i + DUMP_CHUNK];
-                       s.buf[i + DUMP_CHUNK] = 0;
-                       pr_cont("%s", s.buf + i);
-                       s.buf[i + DUMP_CHUNK] = c;
-               } else {
-                       s.buf[s.count] = 0;
-                       pr_cont("%s", s.buf + i);
-               }
-       }
-}
-#else
-static void sync_dump(struct sync_fence *fence)
-{
-}
 #endif
