@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -173,7 +173,7 @@ static void adreno_dump_regs(struct kgsl_device *device,
 	int range = 0, offset = 0;
 
 	for (range = 0; range < size; range++) {
-		
+		/* start and end are in dword offsets */
 		int start = registers[range * 2];
 		int end = registers[range * 2 + 1];
 
@@ -199,8 +199,9 @@ static void dump_ib(struct kgsl_device *device, char *buffId,
 	phys_addr_t pt_base, uint32_t base_offset, uint32_t ib_base,
 	uint32_t ib_size, bool dump)
 {
+	struct kgsl_mem_entry *ent = NULL;
 	uint8_t *base_addr = adreno_convertaddr(device, pt_base,
-		ib_base, ib_size*sizeof(uint32_t));
+		ib_base, ib_size*sizeof(uint32_t), &ent);
 
 	if (base_addr && dump)
 		print_hex_dump(KERN_ERR, buffId, DUMP_PREFIX_OFFSET,
@@ -210,6 +211,10 @@ static void dump_ib(struct kgsl_device *device, char *buffId,
 			"offset:%5.5X%s\n",
 			buffId, ib_base, ib_size*4, base_offset,
 			base_addr ? "" : " [Invalid]");
+	if (ent) {
+		kgsl_memdesc_unmap(&ent->memdesc);
+		kgsl_mem_entry_put(ent);
+	}
 }
 
 #define IB_LIST_SIZE	64
@@ -228,13 +233,14 @@ static void dump_ib1(struct kgsl_device *device, phys_addr_t pt_base,
 	int i, j;
 	uint32_t value;
 	uint32_t *ib1_addr;
+	struct kgsl_mem_entry *ent = NULL;
 
 	dump_ib(device, "IB1:", pt_base, base_offset, ib1_base,
 		ib1_size, dump);
 
-	
+	/* fetch virtual address for given IB base */
 	ib1_addr = (uint32_t *)adreno_convertaddr(device, pt_base,
-		ib1_base, ib1_size*sizeof(uint32_t));
+		ib1_base, ib1_size*sizeof(uint32_t), &ent);
 	if (!ib1_addr)
 		return;
 
@@ -244,7 +250,7 @@ static void dump_ib1(struct kgsl_device *device, phys_addr_t pt_base,
 			uint32_t ib2_base = ib1_addr[i++];
 			uint32_t ib2_size = ib1_addr[i++];
 
-			
+			/* find previous match */
 			for (j = 0; j < ib_list->count; ++j)
 				if (ib_list->sizes[j] == ib2_size
 					&& ib_list->bases[j] == ib2_base)
@@ -254,12 +260,16 @@ static void dump_ib1(struct kgsl_device *device, phys_addr_t pt_base,
 				>= IB_LIST_SIZE)
 				continue;
 
-			
+			/* store match */
 			ib_list->sizes[ib_list->count] = ib2_size;
 			ib_list->bases[ib_list->count] = ib2_base;
 			ib_list->offsets[ib_list->count] = i<<2;
 			++ib_list->count;
 		}
+	}
+	if (ent) {
+		kgsl_memdesc_unmap(&ent->memdesc);
+		kgsl_mem_entry_put(ent);
 	}
 }
 
@@ -509,10 +519,10 @@ int adreno_dump(struct kgsl_device *device, int manual)
 		memcpy(rb_copy+part1_c, rb_vaddr, (num_item-part1_c)<<2);
 	}
 
-	
+	/* extract the latest ib commands from the buffer */
 	ib_list.count = 0;
 	i = 0;
-	
+	/* get the register mapped array in case we are using IOMMU */
 	num_iommu_units = kgsl_mmu_get_num_iommu_units(&device->mmu);
 	for (read_idx = 0; read_idx < num_item; ) {
 		uint32_t this_cmd = rb_copy[read_idx++];
@@ -542,7 +552,7 @@ int adreno_dump(struct kgsl_device *device, int manual)
 								cur_pt_base),
 				&cur_pt_base);
 
-			
+			/* Set cur_pt_base to the new pagetable base */
 			cur_pt_base = rb_copy[read_idx++];
 
 			KGSL_LOG_DUMP(device,
@@ -553,6 +563,8 @@ int adreno_dump(struct kgsl_device *device, int manual)
 		}
 	}
 
+	/* Restore cur_pt_base back to the pt_base of
+	   the process in whose context the GPU hung */
 	cur_pt_base = pt_base;
 
 	read_idx = (int)cp_rb_rptr - NUM_DWORDS_OF_RINGBUFFER_HISTORY;
@@ -593,7 +605,7 @@ int adreno_dump(struct kgsl_device *device, int manual)
 		}
 	}
 
-	
+	/* Dump the registers if the user asked for it */
 	if (device->pm_regs_enabled) {
 		if (adreno_is_a20x(adreno_dev))
 			adreno_dump_regs(device, a200_registers,
@@ -618,7 +630,7 @@ int adreno_dump(struct kgsl_device *device, int manual)
 error_vfree:
 	vfree(rb_copy);
 end:
-	
+	/* Restart the dispatcher after a manually triggered dump */
 	if (manual)
 		adreno_dispatcher_start(device);
 

@@ -17,6 +17,7 @@
 #include "a2xx_reg.h"
 
 
+/* Symbolic table for the adreno draw context type */
 #define ADRENO_DRAWCTXT_TYPES \
 	{ KGSL_CONTEXT_TYPE_ANY, "any" }, \
 	{ KGSL_CONTEXT_TYPE_GL, "GL" }, \
@@ -42,18 +43,24 @@ struct adreno_device;
 struct kgsl_device_private;
 struct kgsl_context;
 
+/* draw context */
 struct gmem_shadow_t {
-	struct kgsl_memdesc gmemshadow;	
+	struct kgsl_memdesc gmemshadow;	/* Shadow buffer address */
 
+	/*
+	 * 256 KB GMEM surface = 4 bytes-per-pixel x 256 pixels/row x
+	 * 256 rows. Width & height must be multiples of 32 in case tiled
+	 * textures are used
+	*/
 
-	enum COLORFORMATX format; 
-	unsigned int size;	
-	unsigned int width;	
-	unsigned int height;	
-	unsigned int pitch;	
-	unsigned int gmem_pitch;	
-	unsigned int *gmem_save_commands;    
-	unsigned int *gmem_restore_commands; 
+	enum COLORFORMATX format; /* Unused on A3XX */
+	unsigned int size;	/* Size of surface used to store GMEM */
+	unsigned int width;	/* Width of surface used to store GMEM */
+	unsigned int height;	/* Height of surface used to store GMEM */
+	unsigned int pitch;	/* Pitch of surface used to store GMEM */
+	unsigned int gmem_pitch;	/* Pitch value used for GMEM */
+	unsigned int *gmem_save_commands;    /* Unused on A3XX */
+	unsigned int *gmem_restore_commands; /* Unused on A3XX */
 	unsigned int gmem_save[3];
 	unsigned int gmem_restore[3];
 	struct kgsl_memdesc quad_vertices;
@@ -63,6 +70,14 @@ struct gmem_shadow_t {
 
 struct adreno_context;
 
+/**
+ * struct adreno_context_ops - context state management functions
+ * @save: optional hook for saving context state
+ * @restore: required hook for restoring state,
+ *		adreno_context_restore() may be used directly here.
+ * @draw_workaround: optional hook for a workaround after every IB
+ * @detach: optional hook for freeing state tracking memory.
+ */
 struct adreno_context_ops {
 	int (*save)(struct adreno_device *, struct adreno_context *);
 	int (*restore)(struct adreno_device *, struct adreno_context *);
@@ -73,6 +88,7 @@ struct adreno_context_ops {
 
 int adreno_context_restore(struct adreno_device *, struct adreno_context *);
 
+/* generic context ops for preamble context switch */
 extern const struct adreno_context_ops adreno_preamble_ctx_ops;
 
 /**
@@ -115,6 +131,8 @@ extern const struct adreno_context_ops adreno_preamble_ctx_ops;
  * @queued: Number of commands queued in the cmdqueue
  * @ops: Context switch functions for this context.
  * @fault_policy: GFT fault policy set in cmdbatch_skip_cmd();
+ * @queued_timestamp: The last timestamp that was queued on this context
+ * @submitted_timestamp: The last timestamp that was submitted for this context
  */
 struct adreno_context {
 	struct kgsl_context base;
@@ -123,7 +141,7 @@ struct adreno_context {
 	int state;
 	unsigned long priv;
 	unsigned int type;
-	struct mutex mutex;
+	spinlock_t lock;
 	struct kgsl_memdesc gpustate;
 	unsigned int reg_restore[3];
 	unsigned int shader_save[3];
@@ -131,13 +149,13 @@ struct adreno_context {
 
 	struct gmem_shadow_t context_gmem_shadow;
 
-	
+	/* A2XX specific items */
 	unsigned int reg_save[3];
 	unsigned int shader_fixup[3];
 	unsigned int chicken_restore[3];
 	unsigned int bin_base_offset;
 
-	
+	/* A3XX specific items */
 	unsigned int regconstant_save[3];
 	unsigned int constant_restore[3];
 	unsigned int hlsqcontrol_restore[3];
@@ -150,7 +168,7 @@ struct adreno_context {
 	struct kgsl_memdesc cond_execs[4];
 	struct kgsl_memdesc hlsqcontrol_restore_commands[1];
 
-	
+	/* Dispatcher */
 	struct kgsl_cmdbatch *cmdqueue[ADRENO_CONTEXT_CMDQUEUE_SIZE];
 	unsigned int cmdqueue_head;
 	unsigned int cmdqueue_tail;
@@ -163,6 +181,8 @@ struct adreno_context {
 
 	const struct adreno_context_ops *ops;
 	unsigned int fault_policy;
+	unsigned int queued_timestamp;
+	unsigned int submitted_timestamp;
 };
 
 /**
@@ -218,6 +238,7 @@ int adreno_drawctxt_wait(struct adreno_device *adreno_dev,
 void adreno_drawctxt_invalidate(struct kgsl_device *device,
 		struct kgsl_context *context);
 
+/* GPU context switch helper functions */
 
 void build_quad_vtxbuff(struct adreno_context *drawctxt,
 		struct gmem_shadow_t *shadow, unsigned int **incmd);
@@ -244,8 +265,8 @@ static inline void create_ib1(struct adreno_context *drawctxt,
 static inline unsigned int *reg_range(unsigned int *cmd, unsigned int start,
 	unsigned int end)
 {
-	*cmd++ = CP_REG(start);		
-	*cmd++ = end - start + 1;	
+	*cmd++ = CP_REG(start);		/* h/w regs, start addr */
+	*cmd++ = end - start + 1;	/* count */
 	return cmd;
 }
 
@@ -255,7 +276,7 @@ static inline void calc_gmemsize(struct gmem_shadow_t *shadow, int gmem_size)
 
 	shadow->format = COLORX_8_8_8_8;
 
-	
+	/* convert from bytes to 32-bit words */
 	gmem_size = (gmem_size + 3) / 4;
 
 	while ((w * h) < gmem_size) {
@@ -271,4 +292,7 @@ static inline void calc_gmemsize(struct gmem_shadow_t *shadow, int gmem_size)
 	shadow->size = shadow->pitch * shadow->height * 4;
 }
 
-#endif  
+void adreno_drawctxt_dump(struct kgsl_device *device,
+		struct kgsl_context *context);
+
+#endif  /* __ADRENO_DRAWCTXT_H */

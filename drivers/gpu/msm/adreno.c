@@ -255,7 +255,7 @@ static const struct {
 };
 
 /* Nice level for the higher priority GPU start thread */
-static int _wake_nice = -7;
+static unsigned int _wake_nice = -7;
 
 /* Number of milliseconds to stay active active after a wake on touch */
 static unsigned int _wake_timeout = 100;
@@ -272,17 +272,15 @@ static void adreno_input_work(struct work_struct *work)
 			struct adreno_device, input_work);
 	struct kgsl_device *device = &adreno_dev->dev;
 
-	if (!_wake_timeout)
-		return;
-
 	kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 
 	device->flags |= KGSL_FLAG_WAKE_ON_TOUCH;
 
 	/*
-	 * Schedule adreno_start in a high priority workqueue.
+	 * Don't schedule adreno_start in a high priority workqueue, we are
+	 * already in a workqueue which should be sufficient
 	 */
-	kgsl_pwrctrl_wake(device, 1);
+	kgsl_pwrctrl_wake(device, 0);
 
 	/*
 	 * When waking up from a touch event we want to stay active long enough
@@ -360,6 +358,10 @@ static const struct input_device_id adreno_input_ids[] = {
 	{
 		.flags = INPUT_DEVICE_ID_MATCH_EVBIT,
 		.evbit = { BIT_MASK(EV_ABS) },
+		/* assumption: MT_.._X & MT_.._Y are in the same long */
+		.absbit = { [BIT_WORD(ABS_MT_POSITION_X)] =
+				BIT_MASK(ABS_MT_POSITION_X) |
+				BIT_MASK(ABS_MT_POSITION_Y) },
 	},
 	{ },
 };
@@ -1592,6 +1594,10 @@ static int adreno_of_get_pwrlevels(struct device_node *parent,
 		if (adreno_of_read_property(child, "qcom,bus-freq",
 			&level->bus_freq))
 			goto done;
+
+		if (adreno_of_read_property(child, "qcom,io-fraction",
+			&level->io_fraction))
+			level->io_fraction = 0;
 	}
 
 	if (adreno_of_read_property(parent, "qcom,initial-pwrlevel",
@@ -3156,15 +3162,30 @@ struct kgsl_memdesc *adreno_find_ctxtmem(struct kgsl_device *device,
 	return desc;
 }
 
+/*
+ * adreno_find_region() - Find corresponding allocation for a given address
+ * @device: Device on which address operates
+ * @pt_base: The pagetable in which address is mapped
+ * @gpuaddr: The gpu address
+ * @size: Size in bytes of the address
+ * @entry: If the allocation is part of user space allocation then the mem
+ * entry is returned in this parameter. Caller is supposed to decrement
+ * refcount on this entry after its done using it.
+ *
+ * Finds an allocation descriptor for a given gpu address range
+ *
+ * Returns the descriptor on success else NULL
+ */
 struct kgsl_memdesc *adreno_find_region(struct kgsl_device *device,
 						phys_addr_t pt_base,
 						unsigned int gpuaddr,
-						unsigned int size)
+						unsigned int size,
+						struct kgsl_mem_entry **entry)
 {
-	struct kgsl_mem_entry *entry;
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 	struct adreno_ringbuffer *ringbuffer = &adreno_dev->ringbuffer;
 
+	*entry = NULL;
 	if (kgsl_gpuaddr_in_memdesc(&ringbuffer->buffer_desc, gpuaddr, size))
 		return &ringbuffer->buffer_desc;
 
@@ -3178,20 +3199,33 @@ struct kgsl_memdesc *adreno_find_region(struct kgsl_device *device,
 					size))
 		return &device->mmu.setstate_memory;
 
-	entry = kgsl_get_mem_entry(device, pt_base, gpuaddr, size);
+	*entry = kgsl_get_mem_entry(device, pt_base, gpuaddr, size);
 
-	if (entry)
-		return &entry->memdesc;
+	if (*entry)
+		return &((*entry)->memdesc);
 
 	return adreno_find_ctxtmem(device, pt_base, gpuaddr, size);
 }
 
+/*
+ * adreno_convertaddr() - Convert a gpu address to kernel mapped address
+ * @device: Device on which the address operates
+ * @pt_base: The pagetable in which address is mapped
+ * @gpuaddr: The start address
+ * @size: The length of address range
+ * @entry: If the allocation is part of user space allocation then the mem
+ * entry is returned in this parameter. Caller is supposed to decrement
+ * refcount on this entry after its done using it.
+ *
+ * Returns the converted host pointer on success else NULL
+ */
 uint8_t *adreno_convertaddr(struct kgsl_device *device, phys_addr_t pt_base,
-			    unsigned int gpuaddr, unsigned int size)
+			    unsigned int gpuaddr, unsigned int size,
+				struct kgsl_mem_entry **entry)
 {
 	struct kgsl_memdesc *memdesc;
 
-	memdesc = adreno_find_region(device, pt_base, gpuaddr, size);
+	memdesc = adreno_find_region(device, pt_base, gpuaddr, size, entry);
 
 	return memdesc ? kgsl_gpuaddr_to_vaddr(memdesc, gpuaddr) : NULL;
 }
@@ -3513,6 +3547,7 @@ static const struct kgsl_functable adreno_functable = {
 	.drawctxt_create = adreno_drawctxt_create,
 	.drawctxt_detach = adreno_drawctxt_detach,
 	.drawctxt_destroy = adreno_drawctxt_destroy,
+	.drawctxt_dump = adreno_drawctxt_dump,
 	.setproperty = adreno_setproperty,
 	.postmortem_dump = adreno_dump,
 	.drawctxt_sched = adreno_drawctxt_sched,

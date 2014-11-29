@@ -30,6 +30,9 @@ struct kgsl_device;
 struct kgsl_ringbuffer_issueibcmds;
 struct kgsl_device_waittimestamp;
 
+/*
+ * Tracepoint for kgsl issue ib commands
+ */
 TRACE_EVENT(kgsl_issueibcmds,
 
 	TP_PROTO(struct kgsl_device *device,
@@ -85,6 +88,9 @@ TRACE_EVENT(kgsl_issueibcmds,
 	)
 );
 
+/*
+ * Tracepoint for kgsl readtimestamp
+ */
 TRACE_EVENT(kgsl_readtimestamp,
 
 	TP_PROTO(struct kgsl_device *device,
@@ -117,6 +123,9 @@ TRACE_EVENT(kgsl_readtimestamp,
 	)
 );
 
+/*
+ * Tracepoint for kgsl waittimestamp entry
+ */
 TRACE_EVENT(kgsl_waittimestamp_entry,
 
 	TP_PROTO(struct kgsl_device *device,
@@ -153,6 +162,9 @@ TRACE_EVENT(kgsl_waittimestamp_entry,
 	)
 );
 
+/*
+ * Tracepoint for kgsl waittimestamp exit
+ */
 TRACE_EVENT(kgsl_waittimestamp_exit,
 
 	TP_PROTO(struct kgsl_device *device, unsigned int curr_ts,
@@ -784,13 +796,11 @@ TRACE_EVENT(kgsl_active_count,
 	)
 );
 
-
 TRACE_EVENT(kgsl_pwrstats,
 	TP_PROTO(struct kgsl_device *device, s64 time,
 		struct kgsl_power_stats *pstats),
 
 	TP_ARGS(device, time, pstats),
-
 	TP_STRUCT__entry(
 		__string(device_name, device->name)
 		__field(s64, total_time)
@@ -814,7 +824,63 @@ TRACE_EVENT(kgsl_pwrstats,
 	)
 );
 
+DECLARE_EVENT_CLASS(syncpoint_timestamp_template,
+	TP_PROTO(struct kgsl_cmdbatch *cmdbatch, struct kgsl_context *context,
+		unsigned int timestamp),
+	TP_ARGS(cmdbatch, context, timestamp),
+	TP_STRUCT__entry(
+		__field(unsigned int, cmdbatch_context_id)
+		__field(unsigned int, context_id)
+		__field(unsigned int, timestamp)
+	),
+	TP_fast_assign(
+		__entry->cmdbatch_context_id = cmdbatch->context->id;
+		__entry->context_id = context->id;
+		__entry->timestamp = timestamp;
+	),
+	TP_printk("ctx=%d sync ctx=%d ts=%d",
+		__entry->cmdbatch_context_id, __entry->context_id,
+		__entry->timestamp)
+);
 
-#endif 
+DEFINE_EVENT(syncpoint_timestamp_template, syncpoint_timestamp,
+	TP_PROTO(struct kgsl_cmdbatch *cmdbatch, struct kgsl_context *context,
+		unsigned int timestamp),
+	TP_ARGS(cmdbatch, context, timestamp)
+);
 
+DEFINE_EVENT(syncpoint_timestamp_template, syncpoint_timestamp_expire,
+	TP_PROTO(struct kgsl_cmdbatch *cmdbatch, struct kgsl_context *context,
+		unsigned int timestamp),
+	TP_ARGS(cmdbatch, context, timestamp)
+);
+
+DECLARE_EVENT_CLASS(syncpoint_fence_template,
+	TP_PROTO(struct kgsl_cmdbatch *cmdbatch, char *name),
+	TP_ARGS(cmdbatch, name),
+	TP_STRUCT__entry(
+		__string(fence_name, name)
+		__field(unsigned int, cmdbatch_context_id)
+	),
+	TP_fast_assign(
+		__entry->cmdbatch_context_id = cmdbatch->context->id;
+		__assign_str(fence_name, name);
+	),
+	TP_printk("ctx=%d fence=%s",
+		__entry->cmdbatch_context_id, __get_str(fence_name))
+);
+
+DEFINE_EVENT(syncpoint_fence_template, syncpoint_fence,
+	TP_PROTO(struct kgsl_cmdbatch *cmdbatch, char *name),
+	TP_ARGS(cmdbatch, name)
+);
+
+DEFINE_EVENT(syncpoint_fence_template, syncpoint_fence_expire,
+	TP_PROTO(struct kgsl_cmdbatch *cmdbatch, char *name),
+	TP_ARGS(cmdbatch, name)
+);
+
+#endif /* _KGSL_TRACE_H */
+
+/* This part must be outside protection */
 #include <trace/define_trace.h>

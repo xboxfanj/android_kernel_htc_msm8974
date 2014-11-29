@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -485,18 +485,10 @@ static int kgsl_pwrctrl_gpuclk_show(struct device *dev,
 {
 	struct kgsl_device *device = kgsl_device_from_dev(dev);
 	struct kgsl_pwrctrl *pwr;
-	unsigned int level;
-
 	if (device == NULL)
 		return 0;
 	pwr = &device->pwrctrl;
-
-	if (device->state == KGSL_STATE_SLUMBER)
-		level = pwr->num_pwrlevels - 1;
-	else
-		level = pwr->active_pwrlevel;
-	return snprintf(buf, PAGE_SIZE, "%d\n",
-			pwr->pwrlevels[level].gpu_freq);
+	return snprintf(buf, PAGE_SIZE, "%ld\n", kgsl_pwrctrl_active_freq(pwr));
 }
 
 static int kgsl_pwrctrl_idle_timer_store(struct device *dev,
@@ -1100,6 +1092,8 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 					   gpu_freq) : 0;
 		pwr->pwrlevels[i].bus_freq =
 			pdata->pwrlevel[i].bus_freq;
+		pwr->pwrlevels[i].io_fraction =
+			pdata->pwrlevel[i].io_fraction;
 	}
 	/* Do not set_rate for targets in sync with AXI */
 	if (pwr->pwrlevels[0].gpu_freq > 0)
@@ -1434,6 +1428,7 @@ _slumber(struct kgsl_device *device)
 		del_timer_sync(&device->idle_timer);
 		/* make sure power is on to stop the device*/
 		kgsl_pwrctrl_enable(device);
+		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_ON);
 		device->ftbl->suspend_context(device);
 		device->ftbl->stop(device);
 		_sleep_accounting(device);
@@ -1720,16 +1715,21 @@ static int _check_active_count(struct kgsl_device *device, int count)
 int kgsl_active_count_wait(struct kgsl_device *device, int count)
 {
 	int result = 0;
+	long wait_jiffies = HZ;
 
 	BUG_ON(!mutex_is_locked(&device->mutex));
 
-	if (atomic_read(&device->active_cnt) > count) {
-		int ret;
+	while (atomic_read(&device->active_cnt) > count) {
+		long ret;
 		kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 		ret = wait_event_timeout(device->active_cnt_wq,
-			_check_active_count(device, count), HZ);
+			_check_active_count(device, count), wait_jiffies);
 		kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 		result = ret == 0 ? -ETIMEDOUT : 0;
+		if (!result)
+			wait_jiffies = ret;
+		else
+			break;
 	}
 
 	return result;
