@@ -115,7 +115,7 @@ static void do_boost_rem(struct work_struct *work)
 
 	pr_debug("Removing boost for CPU%d\n", s->cpu);
 	s->boost_min = 0;
-	
+	/* Force policy re-evaluation to trigger adjust notifier. */
 	cpufreq_update_policy(s->cpu);
 }
 
@@ -126,7 +126,7 @@ static void do_input_boost_rem(struct work_struct *work)
 
 	pr_debug("Removing input boost for CPU%d\n", s->cpu);
 	s->input_boost_min = 0;
-	
+	/* Force policy re-evaluation to trigger adjust notifier. */
 	cpufreq_update_policy(s->cpu);
 }
 
@@ -140,7 +140,8 @@ static int boost_mig_sync_thread(void *data)
 	unsigned long flags;
 
 	while(1) {
-		wait_event(s->sync_wq, s->pending || kthread_should_stop());
+		wait_event_interruptible(s->sync_wq, s->pending ||
+					kthread_should_stop());
 
 		if (kthread_should_stop())
 			break;
@@ -297,7 +298,7 @@ static void cpuboost_input_disconnect(struct input_handle *handle)
 }
 
 static const struct input_device_id cpuboost_ids[] = {
-	
+	/* multi-touch touchscreen */
 	{
 		.flags = INPUT_DEVICE_ID_MATCH_EVBIT |
 			INPUT_DEVICE_ID_MATCH_ABSBIT,
@@ -306,7 +307,7 @@ static const struct input_device_id cpuboost_ids[] = {
 			BIT_MASK(ABS_MT_POSITION_X) |
 			BIT_MASK(ABS_MT_POSITION_Y) },
 	},
-	
+	/* touchpad */
 	{
 		.flags = INPUT_DEVICE_ID_MATCH_KEYBIT |
 			INPUT_DEVICE_ID_MATCH_ABSBIT,
@@ -314,7 +315,7 @@ static const struct input_device_id cpuboost_ids[] = {
 		.absbit = { [BIT_WORD(ABS_X)] =
 			BIT_MASK(ABS_X) | BIT_MASK(ABS_Y) },
 	},
-	
+	/* Keypad */
 	{
 		.flags = INPUT_DEVICE_ID_MATCH_EVBIT,
 		.evbit = { BIT_MASK(EV_KEY) },
