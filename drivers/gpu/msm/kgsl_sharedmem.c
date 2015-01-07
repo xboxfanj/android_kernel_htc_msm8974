@@ -693,30 +693,10 @@ _kgsl_sharedmem_page_alloc(struct kgsl_memdesc *memdesc,
 
 	while (len > 0) {
 		struct page *page;
-		unsigned int gfp_mask = __GFP_HIGHMEM;
-		int j;
 
-		/* don't waste space at the end of the allocation*/
-		if (len < page_size)
-			page_size = PAGE_SIZE;
-
-		/*
-		 * Don't do some of the more aggressive memory recovery
-		 * techniques for large order allocations
-		 */
-		if (page_size != PAGE_SIZE)
-			gfp_mask |= __GFP_COMP | __GFP_NORETRY |
-				__GFP_NO_KSWAPD | __GFP_NOWARN;
-		else
-			gfp_mask |= GFP_KERNEL;
-
-		page = alloc_pages(gfp_mask, get_order(page_size));
+		page = alloc_page(GFP_KERNEL | __GFP_ZERO);
 
 		if (page == NULL) {
-			if (page_size != PAGE_SIZE) {
-				page_size = PAGE_SIZE;
-				continue;
-			}
 
 			/*
 			 * Update sglen and memdesc size,as requested allocation
@@ -737,8 +717,8 @@ _kgsl_sharedmem_page_alloc(struct kgsl_memdesc *memdesc,
 		for (j = 0; j < page_size >> PAGE_SHIFT; j++)
 			pages[pcount++] = nth_page(page, j);
 
-		sg_set_page(&memdesc->sg[sglen++], page, page_size, 0);
-		len -= page_size;
+		sg_set_page(&memdesc->sg[sglen++], page, PAGE_SIZE, 0);
+		len -= PAGE_SIZE;
 	}
 
 	memdesc->sglen = sglen;
