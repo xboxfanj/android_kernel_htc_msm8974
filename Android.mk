@@ -19,7 +19,7 @@
 #
 ifneq ($(ONE_SHOT_MAKEFILE),)
 include build/target/board/Android.mk
-include kernel/AndroidKernel.mk
+include kernel/htc/msm8974/AndroidKernel.mk
 
 ifeq ($(MAKECMDGOALS),all_modules)
 #
