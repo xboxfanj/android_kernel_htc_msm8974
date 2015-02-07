@@ -56,19 +56,24 @@ ENTRY(memmove)
 	CALGN(	add	pc, r4, ip		)
 
 	PLD(	pld	[r1, #-4]		)
-2:	PLD(	subs	r2, r2, #192		)
 	PLD(	pld	[r1, #-68]		)
 	PLD(	pld	[r1, #-132]		)
-	PLD(	blt	4f			)
 	PLD(	pld	[r1, #-196]		)
+	PLD(	pld	[r1, #-260]		)
+	PLD(	pld	[r1, #-324]		)
+2:	PLD(	subs	r2, r2, #512		)
+	PLD(	pld	[r1, #-388]		)
+	PLD(	pld	[r1, #-452]		)
+	PLD(	blt	4f			)
+	PLD(	pld	[r1, #-516]		)
 
-3:	PLD(	pld	[r1, #-260]		)
+3:	PLD(	pld	[r1, #-580]		)
 
 4:		ldmdb	r1!, {r3, r4, r5, r6, r7, r8, ip, lr}
 		subs	r2, r2, #32
 		stmdb	r0!, {r3, r4, r5, r6, r7, r8, ip, lr}
 		bge	3b
-	PLD(	cmn	r2, #192		)
+	PLD(	cmn	r2, #512		)
 	PLD(	bge	4b			)
 
 5:		ands	ip, r2, #28
@@ -127,7 +132,7 @@ ENTRY(memmove)
 		blt	18f
 
 
-		.macro	backward_copy_shift push pull
+		.macro	backward_copy_shift pushshift pullshift
 
 		subs	r2, r2, #28
 		blt	14f
@@ -140,34 +145,39 @@ ENTRY(memmove)
 11:		stmfd	sp!, {r5 - r9}
 
 	PLD(	pld	[r1, #-4]		)
-	PLD(	subs	r2, r2, #192		)
 	PLD(	pld	[r1, #-68]		)
 	PLD(	pld	[r1, #-132]		)
-	PLD(	blt	13f			)
 	PLD(	pld	[r1, #-196]		)
-12:	PLD(	pld	[r1, #-260]		)
+	PLD(	pld	[r1, #-260]		)
+	PLD(	pld	[r1, #-324]		)
+	PLD(	subs	r2, r2, #512		)
+	PLD(	pld	[r1, #-388]		)
+	PLD(	pld	[r1, #-452]		)
+	PLD(	blt	13f			)
+	PLD(	pld	[r1, #-516]		)
+12:	PLD(	pld	[r1, #-580]		)
 13:		ldmdb   r1!, {r7, r8, r9, ip}
-		mov     lr, r3, push #\push
+		mov     lr, r3, pushbits #\pushshift
 		subs    r2, r2, #32
 		ldmdb   r1!, {r3, r4, r5, r6}
-		orr     lr, lr, ip, pull #\pull
-		mov     ip, ip, push #\push
-		orr     ip, ip, r9, pull #\pull
-		mov     r9, r9, push #\push
-		orr     r9, r9, r8, pull #\pull
-		mov     r8, r8, push #\push
-		orr     r8, r8, r7, pull #\pull
-		mov     r7, r7, push #\push
-		orr     r7, r7, r6, pull #\pull
-		mov     r6, r6, push #\push
-		orr     r6, r6, r5, pull #\pull
-		mov     r5, r5, push #\push
-		orr     r5, r5, r4, pull #\pull
-		mov     r4, r4, push #\push
-		orr     r4, r4, r3, pull #\pull
+		orr     lr, lr, ip, pullbits #\pullshift
+		mov     ip, ip, pushbits #\pushshift
+		orr     ip, ip, r9, pullbits #\pullshift
+		mov     r9, r9, pushbits #\pushshift
+		orr     r9, r9, r8, pullbits #\pullshift
+		mov     r8, r8, pushbits #\pushshift
+		orr     r8, r8, r7, pullbits #\pullshift
+		mov     r7, r7, pushbits #\pushshift
+		orr     r7, r7, r6, pullbits #\pullshift
+		mov     r6, r6, pushbits #\pushshift
+		orr     r6, r6, r5, pullbits #\pullshift
+		mov     r5, r5, pushbits #\pushshift
+		orr     r5, r5, r4, pullbits #\pullshift
+		mov     r4, r4, pushbits #\pushshift
+		orr     r4, r4, r3, pullbits #\pullshift
 		stmdb   r0!, {r4 - r9, ip, lr}
 		bge	12b
-	PLD(	cmn	r2, #192		)
+	PLD(	cmn	r2, #512		)
 	PLD(	bge	13b			)
 
 		ldmfd	sp!, {r5 - r9}
@@ -175,25 +185,25 @@ ENTRY(memmove)
 14:		ands	ip, r2, #28
 		beq	16f
 
-15:		mov     lr, r3, push #\push
+15:		mov     lr, r3, pushbits #\pushshift
 		ldr	r3, [r1, #-4]!
 		subs	ip, ip, #4
-		orr	lr, lr, r3, pull #\pull
+		orr	lr, lr, r3, pullbits #\pullshift
 		str	lr, [r0, #-4]!
 		bgt	15b
 	CALGN(	cmp	r2, #0			)
 	CALGN(	bge	11b			)
 
-16:		add	r1, r1, #(\pull / 8)
+16:		add	r1, r1, #(\pullshift / 8)
 		b	8b
 
 		.endm
 
 
-		backward_copy_shift	push=8	pull=24
+		backward_copy_shift	pushshift=8	pullshift=24
 
-17:		backward_copy_shift	push=16	pull=16
+17:		backward_copy_shift	pushshift=16	pullshift=16
 
-18:		backward_copy_shift	push=24	pull=8
+18:		backward_copy_shift	pushshift=24	pullshift=8
 
 ENDPROC(memmove)
