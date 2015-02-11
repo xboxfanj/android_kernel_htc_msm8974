@@ -8,7 +8,6 @@
 #include <linux/types.h>
 #include <media/msmb_generic_buf_mgr.h>
 
-/* Should be same as VIDEO_MAX_PLANES in videodev2.h */
 #define MAX_PLANES VIDEO_MAX_PLANES
 
 #define MAX_NUM_CPP_STRIPS 8
@@ -40,12 +39,6 @@ struct msm_cpp_frame_strip_info {
 	int src_start_y;
 	int src_end_y;
 
-	/* Padding is required for upscaler because it does not
-	 * pad internally like other blocks, also needed for rotation
-	 * rotation expects all the blocks in the stripe to be the same size
-	 * Padding is done such that all the extra padded pixels
-	 * are on the right and bottom
-	 */
 	int pad_bottom;
 	int pad_top;
 	int pad_right;
@@ -239,6 +232,7 @@ struct msm_pproc_queue_buf_info {
 #define VIDIOC_MSM_CPP_SET_CLOCK \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 16, struct msm_camera_v4l2_ioctl_t)
 
+
 #define V4L2_EVENT_CPP_FRAME_DONE  (V4L2_EVENT_PRIVATE_START + 0)
 #define V4L2_EVENT_VPE_FRAME_DONE  (V4L2_EVENT_PRIVATE_START + 1)
 
@@ -249,4 +243,4 @@ struct msm_camera_v4l2_ioctl_t {
 	void __user *ioctl_ptr;
 };
 
-#endif /* __MSMB_PPROC_H */
+#endif 

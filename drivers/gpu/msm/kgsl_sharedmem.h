@@ -74,35 +74,18 @@ void kgsl_process_uninit_sysfs(struct kgsl_process_private *private);
 int kgsl_sharedmem_init_sysfs(void);
 void kgsl_sharedmem_uninit_sysfs(void);
 
-/*
- * kgsl_memdesc_get_align - Get alignment flags from a memdesc
- * @memdesc - the memdesc
- *
- * Returns the alignment requested, as power of 2 exponent.
- */
 static inline int
 kgsl_memdesc_get_align(const struct kgsl_memdesc *memdesc)
 {
 	return (memdesc->flags & KGSL_MEMALIGN_MASK) >> KGSL_MEMALIGN_SHIFT;
 }
 
-/*
- * kgsl_memdesc_get_cachemode - Get cache mode of a memdesc
- * @memdesc: the memdesc
- *
- * Returns a KGSL_CACHEMODE* value.
- */
 static inline int
 kgsl_memdesc_get_cachemode(const struct kgsl_memdesc *memdesc)
 {
 	return (memdesc->flags & KGSL_CACHEMODE_MASK) >> KGSL_CACHEMODE_SHIFT;
 }
 
-/*
- * kgsl_memdesc_set_align - Set alignment flags of a memdesc
- * @memdesc - the memdesc
- * @align - alignment requested, as a power of 2 exponent.
- */
 static inline int
 kgsl_memdesc_set_align(struct kgsl_memdesc *memdesc, unsigned int align)
 {
@@ -118,10 +101,6 @@ kgsl_memdesc_set_align(struct kgsl_memdesc *memdesc, unsigned int align)
 
 static inline unsigned int kgsl_get_sg_pa(struct scatterlist *sg)
 {
-	/*
-	 * Try sg_dma_address first to support ion carveout
-	 * regions which do not work with sg_phys().
-	 */
 	unsigned int pa = sg_dma_address(sg);
 	if (pa == 0)
 		pa = sg_phys(sg);
@@ -132,12 +111,6 @@ int
 kgsl_sharedmem_map_vma(struct vm_area_struct *vma,
 			const struct kgsl_memdesc *memdesc);
 
-/*
- * For relatively small sglists, it is preferable to use kzalloc
- * rather than going down the vmalloc rat hole.  If the size of
- * the sglist is < PAGE_SIZE use kzalloc otherwise fallback to
- * vmalloc
- */
 
 static inline void *kgsl_sg_alloc(unsigned int sglen)
 {
@@ -158,6 +131,15 @@ static inline void kgsl_sg_free(void *ptr, unsigned int sglen)
 		vfree(ptr);
 }
 
+static inline void *kgsl_sg_copy(struct scatterlist* src, unsigned int sglen)
+{
+	struct scatterlist *ptr = kgsl_sg_alloc(sglen);
+
+	if (ptr)
+		memcpy(ptr, src, sglen * sizeof(struct scatterlist));
+	return ptr;
+}
+
 static inline int
 memdesc_sg_phys(struct kgsl_memdesc *memdesc,
 		phys_addr_t physaddr, unsigned int size)
@@ -165,6 +147,8 @@ memdesc_sg_phys(struct kgsl_memdesc *memdesc,
 	memdesc->sg = kgsl_sg_alloc(1);
 	if (memdesc->sg == NULL)
 		return -ENOMEM;
+	if (physaddr || size != PAGE_SIZE)
+		pr_info("%s: %p, sz=%u dma=0x%x\n", __func__, memdesc->sg, size, (int)physaddr);
 
 	kmemleak_not_leak(memdesc->sg);
 
@@ -176,35 +160,17 @@ memdesc_sg_phys(struct kgsl_memdesc *memdesc,
 	return 0;
 }
 
-/*
- * kgsl_memdesc_is_global - is this a globally mapped buffer?
- * @memdesc: the memdesc
- *
- * Returns nonzero if this is a global mapping, 0 otherwise
- */
 static inline int kgsl_memdesc_is_global(const struct kgsl_memdesc *memdesc)
 {
 	return (memdesc->priv & KGSL_MEMDESC_GLOBAL) != 0;
 }
 
-/*
- * kgsl_memdesc_has_guard_page - is the last page a guard page?
- * @memdesc - the memdesc
- *
- * Returns nonzero if there is a guard page, 0 otherwise
- */
 static inline int
 kgsl_memdesc_has_guard_page(const struct kgsl_memdesc *memdesc)
 {
 	return (memdesc->priv & KGSL_MEMDESC_GUARD_PAGE) != 0;
 }
 
-/*
- * kgsl_memdesc_protflags - get mmu protection flags
- * @memdesc - the memdesc
- * Returns a mask of GSL_PT_PAGE* or IOMMU* values based
- * on the memdesc flags.
- */
 static inline unsigned int
 kgsl_memdesc_protflags(const struct kgsl_memdesc *memdesc)
 {
@@ -223,25 +189,12 @@ kgsl_memdesc_protflags(const struct kgsl_memdesc *memdesc)
 	return protflags;
 }
 
-/*
- * kgsl_memdesc_use_cpu_map - use the same virtual mapping on CPU and GPU?
- * @memdesc - the memdesc
- */
 static inline int
 kgsl_memdesc_use_cpu_map(const struct kgsl_memdesc *memdesc)
 {
 	return (memdesc->flags & KGSL_MEMFLAGS_USE_CPU_MAP) != 0;
 }
 
-/*
- * kgsl_memdesc_mmapsize - get the size of the mmap region
- * @memdesc - the memdesc
- *
- * The entire memdesc must be mapped. Additionally if the
- * CPU mapping is going to be mirrored, there must be room
- * for the guard page to be mapped so that the address spaces
- * match up.
- */
 static inline unsigned int
 kgsl_memdesc_mmapsize(const struct kgsl_memdesc *memdesc)
 {
@@ -306,4 +259,4 @@ kgsl_allocate_contiguous(struct kgsl_memdesc *memdesc, size_t size)
 	return ret;
 }
 
-#endif /* __KGSL_SHAREDMEM_H */
+#endif 

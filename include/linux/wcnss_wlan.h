@@ -100,8 +100,7 @@ int wcnss_get_wlan_unsafe_channel(
 				u16 *ch_count);
 #define wcnss_wlan_get_drvdata(dev) dev_get_drvdata(dev)
 #define wcnss_wlan_set_drvdata(dev, data) dev_set_drvdata((dev), (data))
-/* WLAN driver uses these names */
 #define req_riva_power_on_lock(name) wcnss_req_power_on_lock(name)
 #define free_riva_power_on_lock(name) wcnss_free_power_on_lock(name)
 
-#endif /* _WCNSS_WLAN_H_ */
+#endif 

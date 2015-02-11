@@ -38,22 +38,19 @@
 
 #define DRIVER_NAME "msm_rng"
 
-/* Device specific register offsets */
 #define PRNG_DATA_OUT_OFFSET    0x0000
 #define PRNG_STATUS_OFFSET	0x0004
 #define PRNG_LFSR_CFG_OFFSET	0x0100
 #define PRNG_CONFIG_OFFSET	0x0104
 
-/* Device specific register masks and config values */
 #define PRNG_LFSR_CFG_MASK	0xFFFF0000
 #define PRNG_LFSR_CFG_CLOCKS	0x0000DDDD
 #define PRNG_CONFIG_MASK	0xFFFFFFFD
 #define PRNG_HW_ENABLE		0x00000002
 
-#define MAX_HW_FIFO_DEPTH 16                     /* FIFO is 16 words deep */
-#define MAX_HW_FIFO_SIZE (MAX_HW_FIFO_DEPTH * 4) /* FIFO is 32 bits wide  */
+#define MAX_HW_FIFO_DEPTH 16                     
+#define MAX_HW_FIFO_SIZE (MAX_HW_FIFO_DEPTH * 4) 
 
-/* Global FIPS status  */
 #ifdef CONFIG_FIPS_ENABLE
 enum fips_status g_fips140_status = FIPS140_STATUS_FAIL;
 EXPORT_SYMBOL(g_fips140_status);
@@ -64,7 +61,6 @@ EXPORT_SYMBOL(g_fips140_status);
 
 #endif
 
-/*FIPS140-2 call back for DRBG self test */
 void *drbg_call_back;
 EXPORT_SYMBOL(drbg_call_back);
 
@@ -102,12 +98,6 @@ static long msm_rng_ioctl(struct file *filp, unsigned int cmd,
 	return ret;
 }
 
-/*
- *
- *  This function calls hardware random bit generator directory and retuns it
- *  back to caller
- *
- */
 int msm_rng_direct_read(struct msm_rng_device *msm_rng_dev, void *data)
 {
 	struct platform_device *pdev;
@@ -120,30 +110,30 @@ int msm_rng_direct_read(struct msm_rng_device *msm_rng_dev, void *data)
 	pdev = msm_rng_dev->pdev;
 	base = msm_rng_dev->base;
 
-	/* enable PRNG clock */
+	
 	ret = clk_prepare_enable(msm_rng_dev->prng_clk);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to enable clock in callback\n");
 		return 0;
 	}
-	/* read random data from h/w */
+	
 	do {
-		/* check status bit if data is available */
+		
 		if (!(readl_relaxed(base + PRNG_STATUS_OFFSET) & 0x00000001))
-			break;	/* no data to read so just bail */
+			break;	
 
-		/* read FIFO */
+		
 		val = readl_relaxed(base + PRNG_DATA_OUT_OFFSET);
 		if (!val)
-			break;	/* no data to read so just bail */
+			break;	
 
-		/* write data back to callers pointer */
+		
 		*(retdata++) = val;
 		currsize += 4;
 
 	} while (currsize < Q_HW_DRBG_BLOCK_BYTES);
 
-	/* vote to turn off clock */
+	
 	clk_disable_unprepare(msm_rng_dev->prng_clk);
 
 	val = 0L;
@@ -170,14 +160,14 @@ static int msm_rng_drbg_read(struct hwrng *rng,
 
 	down(&msm_rng_dev->drbg_sem);
 
-	/* calculate max size bytes to transfer back to caller */
+	
 	maxsize = min_t(size_t, MAX_HW_FIFO_SIZE, max);
 
-	/* no room for word data */
+	
 	if (maxsize < 4)
 		return 0;
 
-	/* read random data from CTR-AES based DRBG */
+	
 	if (FIPS140_DRBG_ENABLED == msm_rng_dev->fips140_drbg_enabled) {
 		ret1 = fips_drbg_gen(msm_rng_dev->drbg_ctx, data, maxsize);
 		if (FIPS140_PRNG_ERR == ret1)
@@ -185,35 +175,35 @@ static int msm_rng_drbg_read(struct hwrng *rng,
 	} else
 		ret1 = 1;
 
-	/* read random data from h/w */
-	/* enable PRNG clock */
+	
+	
 	ret = clk_prepare_enable(msm_rng_dev->prng_clk);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to enable clock in callback\n");
 		up(&msm_rng_dev->drbg_sem);
 		return 0;
 	}
-	/* read random data from h/w */
+	
 	do {
-		/* check status bit if data is available */
+		
 		if (!(readl_relaxed(base + PRNG_STATUS_OFFSET) & 0x00000001))
-			break;	/* no data to read so just bail */
+			break;	
 
-		/* read FIFO */
+		
 		val = readl_relaxed(base + PRNG_DATA_OUT_OFFSET);
 		if (!val)
-			break;	/* no data to read so just bail */
+			break;	
 
-		/* write data back to callers pointer */
+		
 		if (0 != ret1)
 			*(retdata++) = val;
 		currsize += 4;
 
-		/* make sure we stay on 32bit boundary */
+		
 		if ((maxsize - currsize) < 4)
 			break;
 	} while (currsize < maxsize);
-	/* vote to turn off clock */
+	
 	clk_disable_unprepare(msm_rng_dev->prng_clk);
 
 	up(&msm_rng_dev->drbg_sem);
@@ -339,17 +329,17 @@ static int __devinit msm_rng_enable_hw(struct msm_rng_device *msm_rng_dev)
 		if (ret)
 			pr_err("bus_scale_client_update_req failed!\n");
 	}
-	/* Enable the PRNG CLK */
+	
 	ret = clk_prepare_enable(msm_rng_dev->prng_clk);
 	if (ret) {
 		dev_err(&(msm_rng_dev->pdev)->dev,
 				"failed to enable clock in probe\n");
 		return -EPERM;
 	}
-	/* Enable PRNG h/w only if it is NOT ON */
+	
 	val = readl_relaxed(msm_rng_dev->base + PRNG_CONFIG_OFFSET) &
 					PRNG_HW_ENABLE;
-	/* PRNG H/W is not ON */
+	
 	if (val != PRNG_HW_ENABLE) {
 		val = readl_relaxed(msm_rng_dev->base + PRNG_LFSR_CFG_OFFSET);
 		val &= PRNG_LFSR_CFG_MASK;
@@ -364,9 +354,6 @@ static int __devinit msm_rng_enable_hw(struct msm_rng_device *msm_rng_dev)
 		reg_val |= PRNG_HW_ENABLE;
 		writel_relaxed(reg_val, msm_rng_dev->base + PRNG_CONFIG_OFFSET);
 
-		/* The PRNG clk should be disabled only after we enable the
-		* PRNG h/w by writing to the PRNG CONFIG register.
-		*/
 		mb();
 	}
 	clk_disable_unprepare(msm_rng_dev->prng_clk);
@@ -434,7 +421,7 @@ static int __devinit msm_rng_probe(struct platform_device *pdev)
 		goto err_clk_get;
 	}
 
-	/* create a handle for clock control */
+	
 	if ((pdev->dev.of_node) && (of_property_read_bool(pdev->dev.of_node,
 					"qcom,msm-rng-iface-clk")))
 		msm_rng_dev->prng_clk = clk_get(&pdev->dev,
@@ -447,12 +434,12 @@ static int __devinit msm_rng_probe(struct platform_device *pdev)
 		goto err_clk_get;
 	}
 
-	/* save away pdev and register driver data */
+	
 	msm_rng_dev->pdev = pdev;
 	platform_set_drvdata(pdev, msm_rng_dev);
 
 	if (pdev->dev.of_node) {
-		/* Register bus client */
+		
 		qrng_platform_support = msm_bus_cl_get_pdata(pdev);
 		msm_rng_dev->qrng_perf_client = msm_bus_scale_register_client(
 						qrng_platform_support);
@@ -462,13 +449,13 @@ static int __devinit msm_rng_probe(struct platform_device *pdev)
 			pr_err("Unable to register bus client\n");
 	}
 
-	/* Enable rng h/w */
+	
 	error = msm_rng_enable_hw(msm_rng_dev);
 
 	if (error)
 		goto rollback_clk;
 
-	/* register with hwrng framework */
+	
 	msm_rng.priv = (unsigned long) msm_rng_dev;
 	error = hwrng_register(&msm_rng);
 	if (error) {

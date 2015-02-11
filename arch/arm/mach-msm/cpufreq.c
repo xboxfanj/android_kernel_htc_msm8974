@@ -34,6 +34,11 @@
 #include <mach/socinfo.h>
 #include <mach/cpufreq.h>
 
+#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
+#include <mach/htc_footprint.h>
+#include <mach/clk-provider.h>
+#endif
+
 #include "acpuclock.h"
 
 #ifdef CONFIG_DEBUG_FS
@@ -92,6 +97,13 @@ static void update_l2_bw(int *also_cpu)
 		index = max(index, freq_index[cpu]);
 	}
 
+#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
+	if (l2_clk) {
+		set_acpuclk_l2_freq_footprint(FT_PREV_RATE, l2_clk->rate);
+		set_acpuclk_l2_freq_footprint(FT_NEW_RATE, l2_khz[index] * 1000);
+	}
+#endif
+
 	if (l2_clk)
 		rc = clk_set_rate(l2_clk, l2_khz[index] * 1000);
 	if (rc) {
@@ -108,6 +120,9 @@ out:
 	mutex_unlock(&l2bw_lock);
 }
 
+#ifdef CONFIG_ARCH_MSM8974
+static DEFINE_MUTEX(set_cpufreq_lock);
+#endif
 static int set_cpu_freq(struct cpufreq_policy *policy, unsigned int new_freq,
 			unsigned int index)
 {
@@ -117,14 +132,16 @@ static int set_cpu_freq(struct cpufreq_policy *policy, unsigned int new_freq,
 	struct cpufreq_freqs freqs;
 	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
 
+	if (policy->cpu >= 1 && is_sync)
+		return 0;
+
+#ifdef CONFIG_ARCH_MSM8974
+	mutex_lock(&set_cpufreq_lock);
+#endif
 	freqs.old = policy->cur;
 	freqs.new = new_freq;
 	freqs.cpu = policy->cpu;
 
-	/*
-	 * Put the caller into SCHED_FIFO priority to avoid cpu starvation
-	 * in the acpuclk_set_rate path while increasing frequencies
-	 */
 
 	if (freqs.new > freqs.old && current->policy != SCHED_FIFO) {
 		saved_sched_policy = current->policy;
@@ -137,12 +154,23 @@ static int set_cpu_freq(struct cpufreq_policy *policy, unsigned int new_freq,
 	trace_cpu_frequency_switch_start(freqs.old, freqs.new, policy->cpu);
 	if (is_clk) {
 		unsigned long rate = new_freq * 1000;
+#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
+		set_acpuclk_footprint(policy->cpu, ACPU_ENTER);
+		set_acpuclk_cpu_freq_footprint(FT_PREV_RATE, policy->cpu, policy->cur * 1000);
+		set_acpuclk_cpu_freq_footprint(FT_NEW_RATE, policy->cpu, rate);
+#endif
 		rate = clk_round_rate(cpu_clk[policy->cpu], rate);
 		ret = clk_set_rate(cpu_clk[policy->cpu], rate);
 		if (!ret) {
+#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
+			set_acpuclk_footprint(policy->cpu, ACPU_BEFORE_UPDATE_L2_BW);
+#endif
 			freq_index[policy->cpu] = index;
 			update_l2_bw(NULL);
 		}
+#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
+		set_acpuclk_footprint(policy->cpu, ACPU_LEAVE);
+#endif
 	} else {
 		ret = acpuclk_set_rate(policy->cpu, new_freq, SETRATE_CPUFREQ);
 	}
@@ -152,11 +180,14 @@ static int set_cpu_freq(struct cpufreq_policy *policy, unsigned int new_freq,
 		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
 	}
 
-	/* Restore priority after clock ramp-up */
+	
 	if (freqs.new > freqs.old && saved_sched_policy >= 0) {
 		param.sched_priority = saved_sched_rt_prio;
 		sched_setscheduler_nocheck(current, saved_sched_policy, &param);
 	}
+#ifdef CONFIG_ARCH_MSM8974
+	mutex_unlock(&set_cpufreq_lock);
+#endif
 	return ret;
 }
 
@@ -248,11 +279,6 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 	table = cpufreq_frequency_get_table(policy->cpu);
 	if (table == NULL)
 		return -ENODEV;
-	/*
-	 * In 8625, 8610, and 8226 both cpu core's frequency can not
-	 * be changed independently. Each cpu is bound to
-	 * same frequency. Hence set the cpumask to all cpu.
-	 */
 	if (cpu_is_msm8625() || cpu_is_msm8625q() || cpu_is_msm8226()
 		|| cpu_is_msm8610() || (is_clk && is_sync))
 		cpumask_setall(policy->cpus);
@@ -261,7 +287,7 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 	INIT_WORK(&cpu_work->work, set_cpu_work);
 	init_completion(&cpu_work->complete);
 
-	/* synchronous cpus share the same policy */
+	
 	if (is_clk && !cpu_clk[policy->cpu])
 		return 0;
 
@@ -277,7 +303,10 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 #endif
 
 	if (is_clk)
-		cur_freq = clk_get_rate(cpu_clk[policy->cpu])/1000;
+		if (policy->cpu >= 1 && is_sync)
+			cur_freq = clk_get_rate(cpu_clk[0])/1000;
+		else
+			cur_freq = clk_get_rate(cpu_clk[policy->cpu])/1000;
 	else
 		cur_freq = acpuclk_get_rate(policy->cpu);
 
@@ -289,10 +318,6 @@ static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 				policy->cpu, cur_freq);
 		return -EINVAL;
 	}
-	/*
-	 * Call set_cpu_freq unconditionally so that when cpu is set to
-	 * online, frequency limit will always be updated.
-	 */
 	ret = set_cpu_freq(policy, table[index].frequency, table[index].index);
 	if (ret)
 		return ret;
@@ -324,10 +349,6 @@ static int __cpuinit msm_cpufreq_cpu_callback(struct notifier_block *nfb,
 	case CPU_DOWN_FAILED:
 		per_cpu(cpufreq_suspend, cpu).device_suspended = 0;
 		break;
-	/*
-	 * Scale down clock/power of CPU that is dead and scale it back up
-	 * before the CPU is brought up.
-	 */
 	case CPU_DEAD:
 		if (is_clk) {
 			clk_disable_unprepare(cpu_clk[cpu]);
@@ -343,25 +364,34 @@ static int __cpuinit msm_cpufreq_cpu_callback(struct notifier_block *nfb,
 		}
 		break;
 	case CPU_UP_PREPARE:
+		set_hotplug_on_footprint(cpu, HOF_ENTER_PREPARE);
 		if (is_clk) {
+			set_hotplug_on_footprint(cpu, HOF_BEFORE_PREPARE_L2);
 			rc = clk_prepare(l2_clk);
 			if (rc < 0)
 				return NOTIFY_BAD;
+			set_hotplug_on_footprint(cpu, HOF_BEFORE_PREPARE_CPU);
 			rc = clk_prepare(cpu_clk[cpu]);
 			if (rc < 0)
 				return NOTIFY_BAD;
+			set_hotplug_on_footprint(cpu, HOF_BEFORE_UPDATE_L2_BW);
 			update_l2_bw(&cpu);
 		}
+		set_hotplug_on_footprint(cpu, HOF_LEAVE_PREPARE);
 		break;
 	case CPU_STARTING:
+		set_hotplug_on_footprint(cpu, HOF_ENTER_ENABLE);
 		if (is_clk) {
+			set_hotplug_on_footprint(cpu, HOF_BEFORE_ENABLE_L2);
 			rc = clk_enable(l2_clk);
 			if (rc < 0)
 				return NOTIFY_BAD;
+			set_hotplug_on_footprint(cpu, HOF_BEFORE_ENABLE_CPU);
 			rc = clk_enable(cpu_clk[cpu]);
 			if (rc < 0)
 				return NOTIFY_BAD;
 		}
+		set_hotplug_on_footprint(cpu, HOF_LEAVE_ENABLE);
 		break;
 	default:
 		break;
@@ -374,12 +404,6 @@ static struct notifier_block __refdata msm_cpufreq_cpu_notifier = {
 	.notifier_call = msm_cpufreq_cpu_callback,
 };
 
-/*
- * Define suspend/resume for cpufreq_driver. Kernel will call
- * these during suspend/resume with interrupts disabled. This
- * helps the suspend/resume variable get's updated before cpufreq
- * governor tries to change the frequency after coming out of suspend.
- */
 static int msm_cpufreq_suspend(struct cpufreq_policy *policy)
 {
 	int cpu;
@@ -408,7 +432,7 @@ static struct freq_attr *msm_freq_attr[] = {
 };
 
 static struct cpufreq_driver msm_cpufreq_driver = {
-	/* lps calculations are handled here. */
+	
 	.flags		= CPUFREQ_STICKY | CPUFREQ_CONST_LOOPS,
 	.init		= msm_cpufreq_init,
 	.verify		= msm_cpufreq_verify,
@@ -429,7 +453,7 @@ static int cpufreq_parse_dt(struct device *dev)
 	if (l2_clk)
 		num_cols++;
 
-	/* Parse CPU freq -> L2/Mem BW map table. */
+	
 	if (!of_find_property(dev->of_node, PROP_TBL, &len))
 		return -EINVAL;
 	len /= sizeof(*data);
@@ -446,7 +470,7 @@ static int cpufreq_parse_dt(struct device *dev)
 	if (ret)
 		return ret;
 
-	/* Allocate all data structures. */
+	
 	freq_table = devm_kzalloc(dev, (nf + 1) * sizeof(*freq_table),
 				  GFP_KERNEL);
 	mem_bw = devm_kzalloc(dev, nf * sizeof(*mem_bw), GFP_KERNEL);
@@ -469,21 +493,6 @@ static int cpufreq_parse_dt(struct device *dev)
 			break;
 		f /= 1000;
 
-		/*
-		 * Check if this is the last feasible frequency in the table.
-		 *
-		 * The table listing frequencies higher than what the HW can
-		 * support is not an error since the table might be shared
-		 * across CPUs in different speed bins. It's also not
-		 * sufficient to check if the rounded rate is lower than the
-		 * requested rate as it doesn't cover the following example:
-		 *
-		 * Table lists: 2.2 GHz and 2.5 GHz.
-		 * Rounded rate returns: 2.2 GHz and 2.3 GHz.
-		 *
-		 * In this case, we can CPUfreq to use 2.2 GHz and 2.3 GHz
-		 * instead of rejecting the 2.5 GHz table entry.
-		 */
 		if (i > 0 && f <= freq_table[i-1].frequency)
 			break;
 

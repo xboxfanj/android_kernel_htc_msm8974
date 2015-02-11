@@ -13,19 +13,18 @@
 #ifndef __ARCH_ARM_MACH_MSM_MSM_WATCHDOG_H
 #define __ARCH_ARM_MACH_MSM_MSM_WATCHDOG_H
 
-/* The base is just address of the WDT_RST register */
 #define WDT0_OFFSET	0x38
 #define WDT1_OFFSET	0x60
 
 struct msm_watchdog_pdata {
-	/* pet interval period in ms */
+	
 	unsigned int pet_time;
-	/* bark timeout in ms */
+	
 	unsigned int bark_time;
 	bool has_secure;
 	bool needs_expired_enable;
 	bool has_vic;
-	/* You have to be running in secure mode to use FIQ */
+	
 	bool use_kernel_fiq;
 	void __iomem *base;
 };
@@ -78,6 +77,17 @@ extern unsigned int msm7k_fiq_start, msm7k_fiq_length;
 void pet_watchdog(void);
 #else
 static inline void pet_watchdog(void) { }
+#endif
+
+#if defined(CONFIG_HTC_DEBUG_WATCHDOG)
+void msm_watchdog_bark(void);
+void msm_watchdog_reset(void);
+int msm_watchdog_suspend_deferred(void);
+int msm_watchdog_resume_deferred(void);
+#else
+static inline void msm_watchdog_bark(void) {}
+static inline int msm_watchdog_suspend_deferred(void) { return 0; }
+static inline int msm_watchdog_resume_deferred(void) { return 0; }
 #endif
 
 #endif

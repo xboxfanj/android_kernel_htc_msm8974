@@ -178,7 +178,7 @@ static void q6_hfi_core_work_handler(struct work_struct *work)
 		work, struct q6_hfi_device, vidc_worker);
 	u8 packet[VIDC_IFACEQ_MED_PKT_SIZE];
 
-	/* need to consume all the messages from the firmware */
+	
 	do {
 		rc = q6_hfi_iface_eventq_read(device, packet);
 		if (!rc)
@@ -572,12 +572,6 @@ static void *q6_hfi_session_init(void *device, u32 session_id,
 		dprintk(VIDC_ERR, "session_init: failed to create packet");
 		goto err_session_init;
 	}
-	/*
-	 * Add session id to the list entry and then send the apr pkt.
-	 * This will avoid scenarios where apr_send_pkt is taking more
-	 * time and Q6 is returning an ack even before the session id
-	 * gets added to the session list.
-	 */
 	mutex_lock(&dev->session_lock);
 	list_add_tail(&new_session->list, &dev->sess_head);
 	mutex_unlock(&dev->session_lock);
@@ -586,7 +580,7 @@ static void *q6_hfi_session_init(void *device, u32 session_id,
 	if (rc != apr.hdr.pkt_size) {
 		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
 				__func__, rc);
-		/* Delete the session id as the send pkt is not successful */
+		
 		mutex_lock(&dev->session_lock);
 		list_del(&new_session->list);
 		mutex_unlock(&dev->session_lock);
@@ -1151,7 +1145,7 @@ static int q6_hfi_session_get_property(void *sess,
 		break;
 	case HAL_SYS_DEBUG_CONFIG:
 		break;
-	/*FOLLOWING PROPERTIES ARE NOT IMPLEMENTED IN CORE YET*/
+	
 	case HAL_CONFIG_BUFFER_REQUIREMENTS:
 	case HAL_CONFIG_PRIORITY:
 	case HAL_CONFIG_BATCH_INFO:
@@ -1283,7 +1277,7 @@ static int q6_hfi_load_fw(void *dev)
 		goto fail_subsystem_get;
 	}
 
-	/*Set Q6 to loaded state*/
+	
 	apr_set_q6_state(APR_SUBSYS_LOADED);
 
 	device->apr = apr_register("ADSP", "VIDC",

@@ -28,7 +28,7 @@ enum {
 	BAM_DMUX_DATA_RMNET_6,
 	BAM_DMUX_DATA_RMNET_7,
 	BAM_DMUX_USB_RMNET_0,
-	BAM_DMUX_RESERVED_0, /* 9..11 are reserved*/
+	BAM_DMUX_RESERVED_0, 
 	BAM_DMUX_RESERVED_1,
 	BAM_DMUX_RESERVED_2,
 	BAM_DMUX_DATA_REV_RMNET_0,
@@ -43,24 +43,13 @@ enum {
 	BAM_DMUX_NUM_CHANNELS
 };
 
-/* event type enum */
 enum {
-	BAM_DMUX_RECEIVE, /* data is struct sk_buff */
-	BAM_DMUX_WRITE_DONE, /* data is struct sk_buff */
-	BAM_DMUX_UL_CONNECTED, /* data is null */
-	BAM_DMUX_UL_DISCONNECTED, /*data is null */
+	BAM_DMUX_RECEIVE, 
+	BAM_DMUX_WRITE_DONE, 
+	BAM_DMUX_UL_CONNECTED, 
+	BAM_DMUX_UL_DISCONNECTED, 
 };
 
-/*
- * Open a bam_dmux logical channel
- *     id - the logical channel to open
- *     priv - private data pointer to be passed to the notify callback
- *     notify - event callback function
- *          priv - private data pointer passed to msm_bam_dmux_open()
- *          event_type - type of event
- *          data - data relevant to event.  May not be valid. See event_type
- *                    enum for valid cases.
- */
 #ifdef CONFIG_MSM_BAM_DMUX
 int msm_bam_dmux_open(uint32_t id, void *priv,
 		       void (*notify)(void *priv, int event_type,
@@ -83,6 +72,7 @@ int msm_bam_dmux_is_ch_low(uint32_t id);
 int msm_bam_dmux_reg_notify(void *priv,
 		       void (*notify)(void *priv, int event_type,
 						unsigned long data));
+void bam_change_adaptive_timer(int mode);
 #else
 static inline int msm_bam_dmux_open(uint32_t id, void *priv,
 		       void (*notify)(void *priv, int event_type,
@@ -133,4 +123,4 @@ static inline int msm_bam_dmux_reg_notify(void *priv,
 	return -ENODEV;
 }
 #endif
-#endif /* _BAM_DMUX_H */
+#endif 

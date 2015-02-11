@@ -35,17 +35,6 @@ struct single_row_lut {
 	int cols;
 };
 
-/**
- * struct sf_lut -
- * @rows:	number of percent charge entries should be <= PC_CC_ROWS
- * @cols:	number of charge cycle entries should be <= PC_CC_COLS
- * @row_entries:	the charge cycles/temperature at which sf data
- *			is available in the table.
- *		The charge cycles must be in increasing order from 0 to rows.
- * @percent:	the percent charge at which sf data is available in the table
- *		The  percentcharge must be in decreasing order from 0 to cols.
- * @sf:		the scaling factor data
- */
 struct sf_lut {
 	int rows;
 	int cols;
@@ -54,16 +43,6 @@ struct sf_lut {
 	int sf[PC_CC_ROWS][PC_CC_COLS];
 };
 
-/**
- * struct pc_temp_ocv_lut -
- * @rows:	number of percent charge entries should be <= PC_TEMP_ROWS
- * @cols:	number of temperature entries should be <= PC_TEMP_COLS
- * @temp:	the temperatures at which ocv data is available in the table
- *		The temperatures must be in increasing order from 0 to rows.
- * @percent:	the percent charge at which ocv data is available in the table
- *		The  percentcharge must be in decreasing order from 0 to cols.
- * @ocv:	the open circuit voltage
- */
 struct pc_temp_ocv_lut {
 	int rows;
 	int cols;
@@ -86,29 +65,6 @@ enum battery_type {
 	BATT_QRD_4V2_1300MAH,
 };
 
-/**
- * struct bms_battery_data -
- * @fcc:		full charge capacity (mAmpHour)
- * @fcc_temp_lut:	table to get fcc at a given temp
- * @pc_temp_ocv_lut:	table to get percent charge given batt temp and cycles
- * @pc_sf_lut:		table to get percent charge scaling factor given cycles
- *			and percent charge
- * @rbatt_sf_lut:	table to get battery resistance scaling factor given
- *			temperature and percent charge
- * @default_rbatt_mohm:	the default value of battery resistance to use when
- *			readings from bms are not available.
- * @delta_rbatt_mohm:	the resistance to be added towards lower soc to
- *			compensate for battery capacitance.
- * @rbatt_capacitve_mohm: the resistance to be added to compensate for
- *				battery capacitance
- * @flat_ocv_threshold_uv: the voltage where the battery's discharge curve
- *				starts flattening out.
- * @max_voltage_uv:	max voltage of the battery
- * @cutoff_uv:		cutoff voltage of the battery
- * @iterm_ua:		termination current of the battery when charging
- *			to 100%
- * @batt_id_kohm:	the best matched battery id resistor value
- */
 
 struct bms_battery_data {
 	unsigned int		fcc;
@@ -117,6 +73,7 @@ struct bms_battery_data {
 	struct pc_temp_ocv_lut	*pc_temp_ocv_lut;
 	struct sf_lut		*pc_sf_lut;
 	struct sf_lut		*rbatt_sf_lut;
+	struct sf_lut		*rbatt_est_ocv_lut;
 	int			default_rbatt_mohm;
 	int			delta_rbatt_mohm;
 	int			rbatt_capacitive_mohm;
@@ -125,6 +82,8 @@ struct bms_battery_data {
 	int			cutoff_uv;
 	int			iterm_ua;
 	int			batt_id_kohm;
+	int		qc20_ibatmax_ma;
+	int		qc20_ibatsafe_ma;
 };
 
 #if defined(CONFIG_PM8921_BMS) || \

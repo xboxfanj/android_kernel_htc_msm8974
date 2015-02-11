@@ -24,6 +24,8 @@
 #include <mach/socinfo.h>
 #include <asm/cputype.h>
 #include "acpuclock.h"
+#include "clock-krait.h"
+#include <linux/regulator/krait-regulator.h>
 
 #define CESR_DCTPE		BIT(0)
 #define CESR_DCDPE		BIT(1)
@@ -36,10 +38,8 @@
 
 #define CESR_VALID_MASK		0x000100FF
 
-/* Print a message for everything but TLB MH events */
 #define CESR_PRINT_MASK		0x000000FF
 
-/* Log everything but TLB MH events */
 #define CESR_LOG_EVENT_MASK	0x000000FF
 
 #define L2ESR_IND_ADDR		0x204
@@ -65,13 +65,21 @@
 #ifdef CONFIG_MSM_L1_ERR_PANIC
 #define ERP_L1_ERR(a) panic(a)
 #else
+#if defined(CONFIG_HTC_DEBUG_CACHE)
+#define ERP_L1_ERR(a) WARN(1, a)
+#else
 #define ERP_L1_ERR(a) do { } while (0)
+#endif
 #endif
 
 #ifdef CONFIG_MSM_L1_RECOV_ERR_PANIC
 #define ERP_L1_RECOV_ERR(a) panic(a)
 #else
+#if defined(CONFIG_HTC_DEBUG_CACHE)
+#define ERP_L1_RECOV_ERR(a) WARN(1, a)
+#else
 #define ERP_L1_RECOV_ERR(a) do { } while (0)
+#endif
 #endif
 
 #ifdef CONFIG_MSM_L2_ERP_PORT_PANIC
@@ -83,7 +91,11 @@
 #ifdef CONFIG_MSM_L2_ERP_1BIT_PANIC
 #define ERP_1BIT_ERR(a) panic(a)
 #else
+#if defined(CONFIG_HTC_DEBUG_CACHE)
+#define ERP_1BIT_ERR(a) WARN(1, a)
+#else
 #define ERP_1BIT_ERR(a) do { } while (0)
+#endif
 #endif
 
 #ifdef CONFIG_MSM_L2_ERP_PRINT_ACCESS_ERRORS
@@ -95,7 +107,11 @@
 #ifdef CONFIG_MSM_L2_ERP_2BIT_PANIC
 #define ERP_2BIT_ERR(a) panic(a)
 #else
+#if defined(CONFIG_HTC_DEBUG_CACHE)
+#define ERP_2BIT_ERR(a) WARN(1, a)
+#else
 #define ERP_2BIT_ERR(a) do { } while (0)
+#endif
 #endif
 
 #define MODULE_NAME "msm_cache_erp"
@@ -289,11 +305,14 @@ static irqreturn_t msm_l1_erp_irq(int irq, void *dev_id)
 	unsigned int cpu = smp_processor_id();
 	int print_regs = cesr & CESR_PRINT_MASK;
 	int log_event = cesr & CESR_LOG_EVENT_MASK;
+	int is_ldo_mode = 0, uV = 0;
 
 	if (print_regs) {
+		vreg_krait_get_info(cpu, &is_ldo_mode, &uV);
 		pr_alert("L1 / TLB Error detected on CPU %d!\n", cpu);
 		pr_alert("\tCESR      = 0x%08x\n", cesr);
-		pr_alert("\tCPU speed = %lu\n", acpuclk_get_rate(cpu));
+		pr_alert("\tCPU speed = %lu\n", clock_krait_get_rate(cpu));
+		pr_alert("\tmode = %s, uV = %d\n", (is_ldo_mode?"LDO_MODE":"HS_MODE"),uV);
 		pr_alert("\tMIDR      = 0x%08x\n", read_cpuid_id());
 		msm_erp_dump_regions();
 	}
@@ -338,11 +357,6 @@ static irqreturn_t msm_l1_erp_irq(int irq, void *dev_id)
 		pr_alert("I-side CESYNR = 0x%08x\n", i_cesynr);
 		write_cesr(CESR_I_MASK);
 
-		/*
-		 * Clear the I-side bits from the captured CESR value so that we
-		 * don't accidentally clear any new I-side errors when we do
-		 * the CESR write-clear operation.
-		 */
 		cesr &= ~CESR_I_MASK;
 	}
 
@@ -354,7 +368,7 @@ static irqreturn_t msm_l1_erp_irq(int irq, void *dev_id)
 	if (log_event)
 		log_cpu_event();
 
-	/* Clear the interrupt bits we processed */
+	
 	write_cesr(cesr);
 
 	if (print_regs) {
@@ -367,6 +381,16 @@ static irqreturn_t msm_l1_erp_irq(int irq, void *dev_id)
 
 	return IRQ_HANDLED;
 }
+
+
+#ifdef CONFIG_IGNORE_L2_FALSE_ALRAM
+	#define DUMP_L2_ERP_MIN_INTERVAL  (HZ / 2) 
+
+	static unsigned long last_trigger_jiffies = 0; 
+	int l2_erp_print=0;
+#else
+	int l2_erp_print=1;
+#endif
 
 static irqreturn_t msm_l2_erp_irq(int irq, void *dev_id)
 {
@@ -386,7 +410,16 @@ static irqreturn_t msm_l2_erp_irq(int irq, void *dev_id)
 	l2ear0 = get_l2_indirect_reg(L2EAR0_IND_ADDR);
 	l2ear1 = get_l2_indirect_reg(L2EAR1_IND_ADDR);
 
-	print_alert = print_access_errors() || (l2esr & L2ESR_ACCESS_ERR_MASK);
+#ifdef CONFIG_IGNORE_L2_FALSE_ALRAM
+	if((last_trigger_jiffies == 0) || time_is_after_jiffies(last_trigger_jiffies + DUMP_L2_ERP_MIN_INTERVAL) )
+		l2_erp_print = 0;
+	else
+		l2_erp_print = 1;
+
+	last_trigger_jiffies = jiffies;
+#endif
+
+	print_alert = (l2_erp_print && print_access_errors()) || (l2esr & L2ESR_ACCESS_ERR_MASK);
 
 	if (print_alert) {
 		pr_alert("L2 Error detected!\n");
@@ -506,7 +539,7 @@ static int msm_erp_read_dump_regions(struct platform_device *pdev)
 
 	if (num_dump_regions <= 0) {
 		num_dump_regions = 0;
-		return 0; /* Not an error - this is an optional property */
+		return 0; 
 	}
 
 	dump_regions = devm_kzalloc(&pdev->dev,
@@ -517,6 +550,7 @@ static int msm_erp_read_dump_regions(struct platform_device *pdev)
 
 	for (i = 0; i < num_dump_regions; i++) {
 		res = platform_get_resource(pdev, IORESOURCE_MEM, i);
+		if (!res) continue;
 		dump_regions[i].res = res;
 		dump_regions[i].va = devm_ioremap(&pdev->dev, res->start,
 						  resource_size(res));

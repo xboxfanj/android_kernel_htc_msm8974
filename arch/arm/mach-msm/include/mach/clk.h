@@ -26,6 +26,9 @@
 #define CLKFLAG_INIT_DONE		0x00001000
 #define CLKFLAG_INIT_ERR		0x00002000
 #define CLKFLAG_NO_RATE_CACHE		0x00004000
+#define CLKFLAG_VOTE_VDD_DELAY		0x00010000
+#define CLKFLAG_CPU_CLK			0x00020000
+#define CLKFLAG_L2_CLK			0x00040000
 
 struct clk_lookup;
 struct clk;
@@ -35,13 +38,10 @@ enum clk_reset_action {
 	CLK_RESET_ASSERT	= 1
 };
 
-/* Rate is maximum clock rate in Hz */
 int clk_set_max_rate(struct clk *clk, unsigned long rate);
 
-/* Assert/Deassert reset to a hardware block associated with a clock */
 int clk_reset(struct clk *clk, enum clk_reset_action action);
 
-/* Set clock-specific configuration parameters */
 int clk_set_flags(struct clk *clk, unsigned long flags);
 
 #endif

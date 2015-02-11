@@ -633,6 +633,7 @@ static int ocmem_zone_init(struct platform_device *pdev)
 	for (i = 0; i < pdata->nr_parts; i++) {
 		struct ocmem_partition *part = &pdata->parts[i];
 		zone = get_zone(part->id);
+		BUG_ON(!zone);
 		zone->active = false;
 
 		dev_dbg(dev, "Partition %d, start %lx, size %lx for %s\n",

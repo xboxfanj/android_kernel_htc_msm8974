@@ -29,7 +29,6 @@
 #include <mach/scm.h>
 #include <mach/jtag.h>
 
-/* Coresight management registers */
 #define CORESIGHT_ITCTRL	(0xF00)
 #define CORESIGHT_CLAIMSET	(0xFA0)
 #define CORESIGHT_CLAIMCLR	(0xFA4)
@@ -47,7 +46,6 @@
 #define BMVAL(val, lsb, msb)	((val & BM(lsb, msb)) >> lsb)
 #define BVAL(val, n)		((val & BIT(n)) >> n)
 
-/* Trace registers */
 #define ETMCR			(0x000)
 #define ETMCCR			(0x004)
 #define ETMTRIGGER		(0x008)
@@ -101,7 +99,6 @@
 #define ETMVMIDCVR		(0x240)
 #define ETMCLAIMSET		(0xFA0)
 #define ETMCLAIMCLR		(0xFA4)
-/* ETM Management registers */
 #define ETMOSLAR		(0x300)
 #define ETMOSLSR		(0x304)
 #define ETMOSSRR		(0x308)
@@ -112,7 +109,6 @@
 #define ETM_MAX_CNTR		(4)
 #define ETM_MAX_CTXID_CMP	(3)
 
-/* DBG Registers */
 #define DBGDIDR			(0x0)
 #define DBGWFAR			(0x18)
 #define DBGVCR			(0x1C)
@@ -157,9 +153,7 @@
 
 #define ETM_LOCK(base)						\
 do {									\
-	/* recommended by spec to ensure ETM writes are committed prior
-	 * to resuming execution
-	 */								\
+								\
 	mb();								\
 	etm_write(base, 0x0, CORESIGHT_LAR);			\
 } while (0)
@@ -167,17 +161,13 @@ do {									\
 #define ETM_UNLOCK(base)						\
 do {									\
 	etm_write(base, CORESIGHT_UNLOCK, CORESIGHT_LAR);	\
-	/* ensure unlock and any pending writes are committed prior to
-	 * programming ETM registers
-	 */								\
+								\
 	mb();								\
 } while (0)
 
 #define DBG_LOCK(base)						\
 do {									\
-	/* recommended by spec to ensure ETM writes are committed prior
-	 * to resuming execution
-	 */								\
+								\
 	mb();								\
 	dbg_write(base, 0x0, CORESIGHT_LAR);			\
 } while (0)
@@ -185,9 +175,7 @@ do {									\
 #define DBG_UNLOCK(base)						\
 do {									\
 	dbg_write(base, CORESIGHT_UNLOCK, CORESIGHT_LAR);	\
-	/* ensure unlock and any pending writes are committed prior to
-	 * programming ETM registers
-	 */								\
+								\
 	mb();								\
 } while (0)
 
@@ -238,7 +226,7 @@ static void etm_os_lock(struct etm_cpu_ctx *etmdata)
 
 	if (etm.os_lock_present) {
 		etm_write(etmdata, OSLOCK_MAGIC, ETMOSLAR);
-		/* Ensure OS lock is set before proceeding */
+		
 		mb();
 		for (count = TIMEOUT_US; BVAL(etm_read(etmdata, ETMSR), 1) != 1
 							&& count > 0; count--)
@@ -253,7 +241,7 @@ static void etm_os_lock(struct etm_cpu_ctx *etmdata)
 static void etm_os_unlock(struct etm_cpu_ctx *etmdata)
 {
 	if (etm.os_lock_present) {
-		/* Ensure all writes are complete before clearing OS lock */
+		
 		mb();
 		etm_write(etmdata, 0x0, ETMOSLAR);
 	}
@@ -263,7 +251,7 @@ static void etm_set_pwrdwn(struct etm_cpu_ctx *etmdata)
 {
 	uint32_t etmcr;
 
-	/* ensure all writes are complete before setting pwrdwn */
+	
 	mb();
 	etmcr = etm_read(etmdata, ETMCR);
 	etmcr |= BIT(0);
@@ -277,7 +265,7 @@ static void etm_clr_pwrdwn(struct etm_cpu_ctx *etmdata)
 	etmcr = etm_read(etmdata, ETMCR);
 	etmcr &= ~BIT(0);
 	etm_write(etmdata, etmcr, ETMCR);
-	/* ensure pwrup completes before subsequent register accesses */
+	
 	mb();
 }
 
@@ -437,10 +425,6 @@ static inline void etm_restore_state(struct etm_cpu_ctx *etmdata)
 		etm_write(etmdata, etmdata->state[i++], ETMTRACEIDR);
 		etm_write(etmdata, etmdata->state[i++], ETMVMIDCVR);
 		etm_write(etmdata, etmdata->state[i++], ETMCLAIMSET);
-		/*
-		 * Set ETMCR at last as we dont know the saved status of pwrdwn
-		 * bit
-		 */
 		etm_write(etmdata, etmdata->state[i++], ETMCR);
 
 		etm_os_unlock(etmdata);
@@ -478,9 +462,9 @@ static inline void dbg_save_state(struct dbg_cpu_ctx *dbgdata)
 		dbgdata->state[i++] =  dbg_read(dbgdata, DBGDSCRext);
 		break;
 	case ARM_DEBUG_ARCH_V7p1:
-		/* Set OS Lock */
+		
 		dbg_write(dbgdata, OSLOCK_MAGIC, DBGOSLAR);
-		/* Ensure OS lock is set before proceeding */
+		
 		mb();
 
 		dbgdata->state[i++] =  dbg_read(dbgdata, DBGWFAR);
@@ -530,11 +514,8 @@ static inline void dbg_restore_state(struct dbg_cpu_ctx *dbgdata)
 								DBGDSCRext);
 		break;
 	case ARM_DEBUG_ARCH_V7p1:
-		/* Set OS lock. Lock will already be set after power collapse
-		 * but this write is included to ensure it is set.
-		 */
 		dbg_write(dbgdata, OSLOCK_MAGIC, DBGOSLAR);
-		/* Ensure OS lock is set before proceeding */
+		
 		mb();
 
 		dbg_write(dbgdata, dbgdata->state[i++], DBGWFAR);
@@ -553,10 +534,10 @@ static inline void dbg_restore_state(struct dbg_cpu_ctx *dbgdata)
 		dbg_write(dbgdata, dbgdata->state[i++], DBGDTRRXext);
 		dbg_write(dbgdata, dbgdata->state[i++] & DBGDSCR_MASK,
 								DBGDSCRext);
-		/* Ensure all writes are completing before clearing OS lock */
+		
 		mb();
 		dbg_write(dbgdata, 0x0, DBGOSLAR);
-		/* Ensure OS lock is cleared before proceeding */
+		
 		mb();
 		break;
 	}
@@ -571,7 +552,7 @@ void msm_jtag_save_state(void)
 	cpu = raw_smp_processor_id();
 
 	msm_jtag_save_cntr[cpu]++;
-	/* ensure counter is updated before moving forward */
+	
 	mb();
 
 	if (dbg.save_restore_enabled[cpu])
@@ -587,13 +568,6 @@ void msm_jtag_restore_state(void)
 
 	cpu = raw_smp_processor_id();
 
-	/* Attempt restore only if save has been done. If power collapse
-	 * is disabled, hotplug off of non-boot core will result in WFI
-	 * and hence msm_jtag_save_state will not occur. Subsequently,
-	 * during hotplug on of non-boot core when msm_jtag_restore_state
-	 * is called via msm_platform_secondary_init, this check will help
-	 * bail us out without restoring.
-	 */
 	if (msm_jtag_save_cntr[cpu] == msm_jtag_restore_cntr[cpu])
 		return;
 	else if (msm_jtag_save_cntr[cpu] != msm_jtag_restore_cntr[cpu] + 1)
@@ -602,7 +576,7 @@ void msm_jtag_restore_state(void)
 				   (unsigned long)msm_jtag_restore_cntr[cpu]);
 
 	msm_jtag_restore_cntr[cpu]++;
-	/* ensure counter is updated before moving forward */
+	
 	mb();
 
 	if (dbg.save_restore_enabled[cpu])
@@ -640,21 +614,14 @@ static void __devinit etm_init_arch_data(void *info)
 	uint32_t etmccr;
 	struct etm_cpu_ctx  *etmdata = info;
 
-	/*
-	 * Clear power down bit since when this bit is set writes to
-	 * certain registers might be ignored.
-	 */
 	ETM_UNLOCK(etmdata);
 
 	etm_os_lock_init(etmdata);
 
 	etm_clr_pwrdwn(etmdata);
-	/* Set prog bit. It will be set from reset but this is included to
-	 * ensure it is set
-	 */
 	etm_set_prog(etmdata);
 
-	/* find all capabilities */
+	
 	etmidr = etm_read(etmdata, ETMIDR);
 	etm.arch = BMVAL(etmidr, 4, 11);
 
@@ -678,7 +645,7 @@ static int __devinit jtag_mm_etm_probe(struct platform_device *pdev,
 	struct resource *res;
 	struct device *dev = &pdev->dev;
 
-	/* Allocate memory per cpu */
+	
 	etmdata = devm_kzalloc(dev, sizeof(struct etm_cpu_ctx), GFP_KERNEL);
 	if (!etmdata)
 		return -ENOMEM;
@@ -687,11 +654,14 @@ static int __devinit jtag_mm_etm_probe(struct platform_device *pdev,
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "etm-base");
 
+	if (!res)
+		return -EINVAL;
+
 	etmdata->base = devm_ioremap(dev, res->start, resource_size(res));
 	if (!etmdata->base)
 		return -EINVAL;
 
-	/* Allocate etm state save space per core */
+	
 	etmdata->state = devm_kzalloc(dev,
 			(MAX_ETM_STATE_SIZE * sizeof(uint32_t)), GFP_KERNEL);
 	if (!etmdata->state)
@@ -729,7 +699,7 @@ static void __devinit dbg_init_arch_data(void *info)
 	uint32_t dbgdidr;
 	struct dbg_cpu_ctx *dbgdata = info;
 
-	/* This will run on core0 so use it to populate parameters */
+	
 	dbgdidr = dbg_read(dbgdata, DBGDIDR);
 	dbg.arch = BMVAL(dbgdidr, 16, 19);
 	dbg.nr_ctx_cmp = BMVAL(dbgdidr, 20, 23) + 1;
@@ -746,7 +716,7 @@ static int __devinit jtag_mm_dbg_probe(struct platform_device *pdev,
 	struct resource *res;
 	struct device *dev = &pdev->dev;
 
-	/* Allocate memory per cpu */
+	
 	dbgdata = devm_kzalloc(dev, sizeof(struct dbg_cpu_ctx), GFP_KERNEL);
 	if (!dbgdata)
 		return -ENOMEM;
@@ -755,11 +725,13 @@ static int __devinit jtag_mm_dbg_probe(struct platform_device *pdev,
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "debug-base");
 
+	if (!res)
+		return -EINVAL;
 	dbgdata->base = devm_ioremap(dev, res->start, resource_size(res));
 	if (!dbgdata->base)
 		return -EINVAL;
 
-	/* Allocate etm state save space per core */
+	
 	dbgdata->state = devm_kzalloc(dev,
 			(MAX_DBG_STATE_SIZE * sizeof(uint32_t)), GFP_KERNEL);
 	if (!dbgdata->state)
@@ -813,10 +785,6 @@ static int __devinit jtag_mm_probe(struct platform_device *pdev)
 
 	dbg_ret = jtag_mm_dbg_probe(pdev, cpu);
 
-	/* The probe succeeds even when only one of the etm and dbg probes
-	 * succeeds. This allows us to save-restore etm and dbg registers
-	 * independently.
-	 */
 	if (etm_ret && dbg_ret) {
 		clk_disable_unprepare(clock[cpu]);
 		ret = etm_ret;

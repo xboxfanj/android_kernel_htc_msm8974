@@ -19,7 +19,6 @@
 #include <mach/subsystem_notif.h>
 #include <mach/msm_ipc_logging.h>
 
-/* Per spec.max 40 bytes per received message */
 #define SLIM_MSGQ_BUF_LEN	40
 
 #define MSM_TX_BUFS	2
@@ -44,14 +43,8 @@
 
 #define MSM_SLIM_AUTOSUSPEND		MSEC_PER_SEC
 
-/*
- * Messages that can be received simultaneously:
- * Client reads, LPASS master responses, announcement messages
- * Receive upto 10 messages simultaneously.
- */
 #define MSM_SLIM_DESC_NUM		32
 
-/* MSM Slimbus peripheral settings */
 #define MSM_SLIM_PERF_SUMM_THRESHOLD	0x8000
 #define MSM_SLIM_NPORTS			24
 #define MSM_SLIM_NCHANS			32
@@ -86,7 +79,6 @@
 #define MSM_MAX_NSATS	2
 #define MSM_MAX_SATCH	32
 
-/* Slimbus QMI service */
 #define SLIMBUS_QMI_SVC_ID 0x0301
 #define SLIMBUS_QMI_SVC_V1 1
 #define SLIMBUS_QMI_INS_ID 0
@@ -98,13 +90,11 @@
 #define PGD_THIS_EE_V2(r) (dev->base + (r ## _V2) + (dev->ee * 0x1000))
 #define PGD_PORT_V2(r, p) (dev->base + (r ## _V2) + ((p) * 0x1000))
 #define CFG_PORT_V2(r) ((r ## _V2))
-/* Component registers */
 enum comp_reg_v2 {
 	COMP_CFG_V2		= 4,
 	COMP_TRUST_CFG_V2	= 0x3000,
 };
 
-/* Manager PGD registers */
 enum pgd_reg_v2 {
 	PGD_CFG_V2		= 0x800,
 	PGD_STAT_V2		= 0x804,
@@ -134,13 +124,11 @@ enum pgd_reg_v2 {
 #define PGD_THIS_EE_V1(r) (dev->base + (r ## _V1) + (dev->ee * 16))
 #define PGD_PORT_V1(r, p) (dev->base + (r ## _V1) + ((p) * 32))
 #define CFG_PORT_V1(r) ((r ## _V1))
-/* Component registers */
 enum comp_reg_v1 {
 	COMP_CFG_V1		= 0,
 	COMP_TRUST_CFG_V1	= 0x14,
 };
 
-/* Manager PGD registers */
 enum pgd_reg_v1 {
 	PGD_CFG_V1		= 0x1000,
 	PGD_STAT_V1		= 0x1004,
@@ -305,10 +293,8 @@ enum rsc_grp {
 };
 
 
-/* IPC logging stuff */
 #define IPC_SLIMBUS_LOG_PAGES 5
 
-/* Log levels */
 enum {
 	FATAL_LEV = 0U,
 	ERR_LEV = 1U,
@@ -317,7 +303,6 @@ enum {
 	DBG_LEV = 4U,
 };
 
-/* Default IPC log level INFO */
 #define SLIM_DBG(dev, x...) do { \
 	pr_debug(x); \
 	if (dev->ipc_slimbus_log && dev->ipc_log_mask >= DBG_LEV) { \
@@ -332,17 +317,12 @@ enum {
 	} \
 } while (0)
 
-/* warnings and errors show up on console always */
 #define SLIM_WARN(dev, x...) do { \
 	pr_warn(x); \
 	if (dev->ipc_slimbus_log && dev->ipc_log_mask >= WARN_LEV) \
 		ipc_log_string(dev->ipc_slimbus_log, x); \
 } while (0)
 
-/* ERROR condition in the driver sets the hs_serial_debug_mask
- * to ERR_FATAL level, so that this message can be seen
- * in IPC logging. Further errors continue to log on the console
- */
 #define SLIM_ERR(dev, x...) do { \
 	pr_err(x); \
 	if (dev->ipc_slimbus_log && dev->ipc_log_mask >= ERR_LEV) { \

@@ -657,7 +657,7 @@ static struct block_device *bd_acquire(struct inode *inode)
 	return bdev;
 }
 
-static inline int sb_is_blkdev_sb(struct super_block *sb)
+inline int sb_is_blkdev_sb(struct super_block *sb)
 {
 	return sb == blockdev_superblock;
 }
@@ -1412,12 +1412,16 @@ struct block_device *blkdev_get_by_dev(dev_t dev, fmode_t mode, void *holder)
 	int err;
 
 	bdev = bdget(dev);
-	if (!bdev)
+	if (!bdev) {
+		pr_info("%s bdget error\n", __func__);
 		return ERR_PTR(-ENOMEM);
+	}
 
 	err = blkdev_get(bdev, mode, holder);
-	if (err)
+	if (err) {
+		pr_info("%s blkdev_get error\n", __func__);
 		return ERR_PTR(err);
+	}
 
 	return bdev;
 }
@@ -1667,8 +1671,10 @@ struct block_device *lookup_bdev(const char *pathname)
 		return ERR_PTR(-EINVAL);
 
 	error = kern_path(pathname, LOOKUP_FOLLOW, &path);
-	if (error)
+	if (error) {
+		pr_info("%s kern_path err = %d\n", __func__, error);
 		return ERR_PTR(error);
+	}
 
 	inode = path.dentry->d_inode;
 	error = -ENOTBLK;

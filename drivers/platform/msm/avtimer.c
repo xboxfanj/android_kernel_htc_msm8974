@@ -244,7 +244,13 @@ int avcs_core_disable_power_collapse(int enable)
 	mutex_lock(&avtimer.avtimer_lock);
 	if (enable) {
 		if (avtimer.avtimer_open_cnt) {
-			avtimer.avtimer_open_cnt++;
+			
+			
+			
+			
+			
+			avtimer.avtimer_open_cnt = 1;
+			
 			pr_debug("%s: opened avtimer open count=%d\n",
 				__func__, avtimer.avtimer_open_cnt);
 			rc = 0;
@@ -257,7 +263,13 @@ int avcs_core_disable_power_collapse(int enable)
 		}
 	} else {
 		if (avtimer.avtimer_open_cnt > 0) {
-			avtimer.avtimer_open_cnt--;
+			
+			
+			
+			
+			
+			avtimer.avtimer_open_cnt = 0;
+			
 			if (!avtimer.avtimer_open_cnt) {
 				rc = avcs_core_disable_avtimer(
 				avtimer.timer_handle);
@@ -323,9 +335,6 @@ static int avtimer_release(struct inode *inode, struct file *file)
 	return avcs_core_disable_power_collapse(0);
 }
 
-/*
- * ioctl call provides GET_AVTIMER
- */
 static long avtimer_ioctl(struct file *file, unsigned int ioctl_num,
 				unsigned long ioctl_param)
 {
@@ -412,7 +421,7 @@ static int dev_avtimer_probe(struct platform_device *pdev)
 		goto unmap;
 	}
 	avtimer.num_retries = Q6_READY_MAX_RETRIES;
-	/* get the device number */
+	
 	if (major)
 		result = register_chrdev_region(dev, 1, DEVICE_NAME);
 	else {

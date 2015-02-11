@@ -75,8 +75,6 @@ enum vidc_core_state {
 	VIDC_CORE_INVALID
 };
 
-/*Donot change the enum values unless
- * you know what you are doing*/
 enum instance_state {
 	MSM_VIDC_CORE_UNINIT_DONE = 0x0001,
 	MSM_VIDC_CORE_INIT,
@@ -256,6 +254,10 @@ struct msm_vidc_inst {
 	struct list_head registered_bufs;
 	bool map_output_buffer;
 	struct v4l2_ctrl **ctrls;
+	
+	pid_t call_pid;
+	char process_name[50];
+	
 };
 
 extern struct msm_vidc_drv *vidc_driver;

@@ -57,7 +57,7 @@ struct thermal_zone_device_ops {
 		     struct thermal_cooling_device *);
 	int (*unbind) (struct thermal_zone_device *,
 		       struct thermal_cooling_device *);
-	int (*get_temp) (struct thermal_zone_device *, unsigned long *);
+	int (*get_temp) (struct thermal_zone_device *, long *);
 	int (*get_mode) (struct thermal_zone_device *,
 			 enum thermal_device_mode *);
 	int (*set_mode) (struct thermal_zone_device *,
@@ -67,10 +67,10 @@ struct thermal_zone_device_ops {
 	int (*activate_trip_type) (struct thermal_zone_device *, int,
 		enum thermal_trip_activation_mode);
 	int (*get_trip_temp) (struct thermal_zone_device *, int,
-			      unsigned long *);
+			      long *);
 	int (*set_trip_temp) (struct thermal_zone_device *, int,
 			      long);
-	int (*get_crit_temp) (struct thermal_zone_device *, unsigned long *);
+	int (*get_crit_temp) (struct thermal_zone_device *, long *);
 	int (*notify) (struct thermal_zone_device *, int,
 		       enum thermal_trip_type);
 };
@@ -135,13 +135,12 @@ struct thermal_zone_device {
 	const struct thermal_zone_device_ops *ops;
 	struct list_head cooling_devices;
 	struct idr idr;
-	struct mutex lock;	/* protect cooling devices list */
+	struct mutex lock;	
 	struct list_head node;
 	struct delayed_work poll_queue;
 	struct sensor_threshold tz_threshold[2];
 	struct sensor_info sensor;
 };
-/* Adding event notification support elements */
 #define THERMAL_GENL_FAMILY_NAME                "thermal_event"
 #define THERMAL_GENL_VERSION                    0x01
 #define THERMAL_GENL_MCAST_GROUP_NAME           "thermal_mc_group"
@@ -157,7 +156,6 @@ struct thermal_genl_event {
 	u32 orig;
 	enum events event;
 };
-/* attributes of thermal_genl_family */
 enum {
 	THERMAL_GENL_ATTR_UNSPEC,
 	THERMAL_GENL_ATTR_EVENT,
@@ -165,7 +163,6 @@ enum {
 };
 #define THERMAL_GENL_ATTR_MAX (__THERMAL_GENL_ATTR_MAX - 1)
 
-/* commands supported by the thermal_genl_family */
 enum {
 	THERMAL_GENL_CMD_UNSPEC,
 	THERMAL_GENL_CMD_EVENT,
@@ -204,4 +201,4 @@ static inline int thermal_generate_netlink_event(u32 orig, enum events event)
 }
 #endif
 
-#endif /* __THERMAL_H__ */
+#endif 

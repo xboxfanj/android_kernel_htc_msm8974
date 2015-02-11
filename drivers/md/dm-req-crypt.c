@@ -95,7 +95,7 @@ static  bool req_crypt_should_encrypt(struct req_dm_crypt_io *req)
 	bio = req->cloned_request->bio;
 
 	ret = pft_get_key_index(bio, &key_id, &is_encrypted, &is_inplace);
-	/* req->key_id = key_id; @todo support more than 1 pfe key */
+	
 	if ((ret == 0) && (is_encrypted || is_inplace)) {
 		should_encrypt = true;
 		req->key_id = PFE_KEY_ID;
@@ -122,7 +122,7 @@ static  bool req_crypt_should_deccrypt(struct req_dm_crypt_io *req)
 	bio = req->cloned_request->bio;
 
 	ret = pft_get_key_index(bio, &key_id, &is_encrypted, &is_inplace);
-	/* req->key_id = key_id; @todo support more than 1 pfe key */
+	
 	if ((ret == 0) && (is_encrypted && !is_inplace)) {
 		should_deccrypt = true;
 		req->key_id = PFE_KEY_ID;
@@ -151,18 +151,10 @@ static void req_crypt_dec_pending_encrypt(struct req_dm_crypt_io *io)
 		} else {
 			DMERR("%s io->cloned_request is NULL\n",
 								__func__);
-			/*
-			 * If Clone is NULL we cannot do anything,
-			 * this should never happen
-			 */
 			BUG();
 		}
 	} else {
 		DMERR("%s io is NULL\n", __func__);
-		/*
-		 * If Clone is NULL we cannot do anything,
-		 * this should never happen
-		 */
 		BUG();
 	}
 
@@ -187,32 +179,20 @@ static void req_crypt_dec_pending_decrypt(struct req_dm_crypt_io *io)
 		} else {
 			DMERR("%s io->cloned_request is NULL\n",
 								__func__);
-			/*
-			 * If Clone is NULL we cannot do anything,
-			 * this should never happen
-			 */
 			BUG();
 		}
 	} else {
 		DMERR("%s io is NULL\n",
 							__func__);
-		/*
-		 * If Clone is NULL we cannot do anything,
-		 * this should never happen
-		 */
 		BUG();
 	}
 
-	/* Should never get here if io or Clone is NULL */
+	
 	dm_end_request(clone, error);
 	atomic_dec(&io->pending);
 	mempool_free(io, req_io_pool);
 }
 
-/*
- * The callback that will be called by the worker queue to perform Decryption
- * for reads and use the dm function to complete the bios and requests.
- */
 static void req_cryptd_crypt_read_convert(struct req_dm_crypt_io *io)
 {
 	struct request *clone = NULL;
@@ -307,10 +287,6 @@ static void req_cryptd_crypt_read_convert(struct req_dm_crypt_io *io)
 		break;
 
 	case -EBUSY:
-		/*
-		 * Lets make this synchronous request by waiting on
-		 * in progress as well
-		 */
 	case -EINPROGRESS:
 		wait_for_completion_io(&result.completion);
 		if (result.err) {
@@ -338,10 +314,6 @@ submit_request:
 	req_crypt_dec_pending_decrypt(io);
 }
 
-/*
- * This callback is called by the worker queue to perform non-decrypt reads
- * and use the dm function to complete the bios and requests.
- */
 static void req_cryptd_crypt_read_plain(struct req_dm_crypt_io *io)
 {
 	struct request *clone = NULL;
@@ -349,7 +321,7 @@ static void req_cryptd_crypt_read_plain(struct req_dm_crypt_io *io)
 
 	if (!io || !io->cloned_request) {
 		DMERR("%s io is invalid\n", __func__);
-		BUG(); /* should not happen */
+		BUG(); 
 	}
 
 	clone = io->cloned_request;
@@ -358,10 +330,6 @@ static void req_cryptd_crypt_read_plain(struct req_dm_crypt_io *io)
 	mempool_free(io, req_io_pool);
 }
 
-/*
- * The callback that will be called by the worker queue to perform Encryption
- * for writes and submit the request using the elevelator.
- */
 static void req_cryptd_crypt_write_convert(struct req_dm_crypt_io *io)
 {
 	struct request *clone = NULL;
@@ -503,10 +471,6 @@ static void req_cryptd_crypt_write_convert(struct req_dm_crypt_io *io)
 		break;
 
 	case -EBUSY:
-		/*
-		 * Lets make this synchronous request by waiting on
-		 * in progress as well
-		 */
 	case -EINPROGRESS:
 		wait_for_completion_interruptible(&result.completion);
 		if (result.err) {
@@ -557,17 +521,13 @@ submit_request:
 	req_crypt_dec_pending_encrypt(io);
 }
 
-/*
- * This callback is called by the worker queue to perform non-encrypted writes
- * and submit the request using the elevelator.
- */
 static void req_cryptd_crypt_write_plain(struct req_dm_crypt_io *io)
 {
 	struct request *clone = NULL;
 
 	if (!io || !io->cloned_request) {
 		DMERR("%s io is invalid\n", __func__);
-		BUG(); /* should not happen */
+		BUG(); 
 	}
 
 	clone = io->cloned_request;
@@ -575,7 +535,6 @@ static void req_cryptd_crypt_write_plain(struct req_dm_crypt_io *io)
 	dm_dispatch_request(clone);
 }
 
-/* Queue callback function that will get triggered */
 static void req_cryptd_crypt(struct work_struct *work)
 {
 	struct req_dm_crypt_io *io =
@@ -603,11 +562,6 @@ static void req_cryptd_queue_crypt(struct req_dm_crypt_io *io)
 	queue_work(req_crypt_queue, &io->work);
 }
 
-/*
- * Cipher complete callback, this is triggered by the Linux crypto api once
- * the operation is done. This signals the waiting thread that the crypto
- * operation is complete.
- */
 static void req_crypt_cipher_complete(struct crypto_async_request *req, int err)
 {
 	struct req_crypt_result *res = req->data;
@@ -619,18 +573,12 @@ static void req_crypt_cipher_complete(struct crypto_async_request *req, int err)
 	complete(&res->completion);
 }
 
-/*
- * If bio->bi_dev is a partition, remap the location
- */
 static inline void req_crypt_blk_partition_remap(struct bio *bio)
 {
 	struct block_device *bdev = bio->bi_bdev;
 
 	if (bio_sectors(bio) && bdev != bdev->bd_contains) {
 		struct hd_struct *p = bdev->bd_part;
-		/*
-		* Check for integer overflow, should never happen.
-		*/
 		if (p->start_sect > (UINT_MAX - bio->bi_sector))
 			BUG();
 
@@ -639,14 +587,6 @@ static inline void req_crypt_blk_partition_remap(struct bio *bio)
 	}
 }
 
-/*
- * The endio function is called from ksoftirqd context (atomic).
- * For write operations the new pages created form the mempool
- * is freed and returned.  * For read operations, decryption is
- * required, since this is called in a atomic  * context, the
- * request is sent to a worker queue to complete decryptiona and
- * free the request once done.
- */
 static int req_crypt_endio(struct dm_target *ti, struct request *clone,
 			    int error, union map_info *map_context)
 {
@@ -655,7 +595,7 @@ static int req_crypt_endio(struct dm_target *ti, struct request *clone,
 	struct bio_vec *bvec = NULL;
 	struct req_dm_crypt_io *req_io = map_context->ptr;
 
-	/* If it is a write request, do nothing just return. */
+	
 	bvec = NULL;
 	if (rq_data_dir(clone) == WRITE) {
 		rq_for_each_segment(bvec, clone, iter1) {
@@ -678,15 +618,6 @@ submit_request:
 	return err;
 }
 
-/*
- * This function is called with interrupts disabled
- * The function remaps the clone for the underlying device.
- * If it is a write request, it calls into the worker queue to
- * encrypt the data
- * and submit the request directly using the elevator
- * For a read request no pre-processing is required the request
- * is returned to dm once mapping is done
- */
 static int req_crypt_map(struct dm_target *ti, struct request *clone,
 			 union map_info *map_context)
 {
@@ -708,9 +639,6 @@ static int req_crypt_map(struct dm_target *ti, struct request *clone,
 		goto submit_request;
 	}
 
-	/* Save the clone in the req_io, the callback to the worker
-	 * queue will get the req_io
-	 */
 	req_io->cloned_request = clone;
 	map_context->ptr = req_io;
 	atomic_set(&req_io->pending, 0);
@@ -720,28 +648,14 @@ static int req_crypt_map(struct dm_target *ti, struct request *clone,
 	if (rq_data_dir(clone) == READ)
 		req_io->should_decrypt = req_crypt_should_deccrypt(req_io);
 
-	/* Get the queue of the underlying original device */
+	
 	clone->q = bdev_get_queue(dev->bdev);
 	clone->rq_disk = dev->bdev->bd_disk;
 
 	__rq_for_each_bio(bio_src, clone) {
 		bio_src->bi_bdev = dev->bdev;
-		/* Currently the way req-dm works is that once the underlying
-		 * device driver completes the request by calling into the
-		 * block layer. The block layer completes the bios (clones) and
-		 * then the cloned request. This is undesirable for req-dm-crypt
-		 * hence added a flag BIO_DONTFREE, this flag will ensure that
-		 * blk layer does not complete the cloned bios before completing
-		 * the request. When the crypt endio is called, post-processsing
-		 * is done and then the dm layer will complete the bios (clones)
-		 * and free them.
-		 */
 		bio_src->bi_flags |= 1 << BIO_DONTFREE;
 
-		/*
-		 * If this device has partitions, remap block n
-		 * of partition p to block n+start(p) of the disk.
-		 */
 		req_crypt_blk_partition_remap(bio_src);
 		if (copy_bio_sector_to_req == 0) {
 			clone->__sector = bio_src->bi_sector;
@@ -788,10 +702,6 @@ static void req_crypt_dtr(struct dm_target *ti)
 }
 
 
-/*
- * Construct an encryption mapping:
- * <cipher> <key> <iv_offset> <dev_path> <start>
- */
 static int req_crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 {
 	unsigned long long tmpll;
@@ -833,7 +743,7 @@ static int req_crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 
 	start_sector_orig = tmpll;
 
-	/* Allow backward compatible */
+	
 	if (argc >= 6) {
 		if (argv[5]) {
 			if (!strcmp(argv[5], "fde_enabled"))
@@ -847,7 +757,7 @@ static int req_crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		}
 	} else {
 		DMERR(" %s Arg[5] missing, set FDE enabled.\n", __func__);
-		is_fde_enabled = true; /* backward compatible */
+		is_fde_enabled = true; 
 	}
 	DMDEBUG("%s is_fde_enabled=%d\n", __func__, is_fde_enabled);
 
@@ -863,7 +773,7 @@ static int req_crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		goto ctr_exit;
 	}
 
-	/* Allocate the crypto alloc blk cipher and keep the handle */
+	
 	tfm = crypto_alloc_ablkcipher("qcom-xts(aes)", 0, 0);
 	if (IS_ERR(tfm)) {
 		DMERR("%s ablkcipher tfm allocation failed : error\n",

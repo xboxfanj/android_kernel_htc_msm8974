@@ -34,7 +34,6 @@
 #define HW_CONTROL_MASK		BIT(1)
 #define SW_COLLAPSE_MASK	BIT(0)
 
-/* Wait 2^n CXO cycles between all states. Here, n=2 (4 cycles). */
 #define EN_REST_WAIT_VAL	(0x2 << 20)
 #define EN_FEW_WAIT_VAL		(0x8 << 16)
 #define CLK_DIS_WAIT_VAL	(0x2 << 12)
@@ -77,9 +76,10 @@ static int gdsc_enable(struct regulator_dev *rdev)
 		ret = readl_tight_poll_timeout(sc->gdscr, regval,
 					regval & PWR_ON_MASK, TIMEOUT_US);
 		if (ret) {
-			dev_err(&rdev->dev, "%s enable timed out\n",
-				sc->rdesc.name);
-			return ret;
+			dev_warn(&rdev->dev, "%s enable taking longer than %dus\n",
+				 sc->rdesc.name, TIMEOUT_US);
+			readl_tight_poll(sc->gdscr, regval, regval & PWR_ON_MASK);
+			dev_warn(&rdev->dev, "%s enabled\n", sc->rdesc.name);
 		}
 	} else {
 		for (i = 0; i < sc->clock_count; i++)
@@ -94,12 +94,6 @@ static int gdsc_enable(struct regulator_dev *rdev)
 			clk_set_flags(sc->clocks[i], CLKFLAG_RETAIN_PERIPH);
 	}
 
-	/*
-	 * If clocks to this power domain were already on, they will take an
-	 * additional 4 clock cycles to re-enable after the rail is enabled.
-	 * Delay to account for this. A delay is also needed to ensure clocks
-	 * are not enabled within 400ns of enabling power to the memories.
-	 */
 	udelay(1);
 
 	return 0;
@@ -135,7 +129,7 @@ static int gdsc_disable(struct regulator_dev *rdev)
 		sc->resets_asserted = true;
 	}
 
-	return ret;
+	return 0;
 }
 
 static struct regulator_ops gdsc_ops = {
@@ -211,14 +205,10 @@ static int __devinit gdsc_probe(struct platform_device *pdev)
 	sc->rdesc.owner = THIS_MODULE;
 	platform_set_drvdata(pdev, sc);
 
-	/*
-	 * Disable HW trigger: collapse/restore occur based on registers writes.
-	 * Disable SW override: Use hardware state-machine for sequencing.
-	 */
 	regval = readl_relaxed(sc->gdscr);
 	regval &= ~(HW_CONTROL_MASK | SW_OVERRIDE_MASK);
 
-	/* Configure wait time between states. */
+	
 	regval &= ~(EN_REST_WAIT_MASK | EN_FEW_WAIT_MASK | CLK_DIS_WAIT_MASK);
 	regval |= EN_REST_WAIT_VAL | EN_FEW_WAIT_VAL | CLK_DIS_WAIT_VAL;
 	writel_relaxed(regval, sc->gdscr);

@@ -15,9 +15,6 @@
 #define DRM_KGSL_GEM_GET_BUFINFO 0x08
 #define DRM_KGSL_GEM_SET_BUFCOUNT 0x09
 #define DRM_KGSL_GEM_SET_ACTIVE 0x0A
-#define DRM_KGSL_GEM_LOCK_HANDLE 0x0B
-#define DRM_KGSL_GEM_UNLOCK_HANDLE 0x0C
-#define DRM_KGSL_GEM_UNLOCK_ON_TS 0x0D
 #define DRM_KGSL_GEM_CREATE_FD 0x0E
 #define DRM_KGSL_GEM_GET_ION_FD 0x0F
 #define DRM_KGSL_GEM_CREATE_FROM_ION 0x10
@@ -69,18 +66,6 @@ DRM_IOWR(DRM_COMMAND_BASE + DRM_KGSL_GEM_GET_BUFCOUNT, \
 DRM_IOWR(DRM_COMMAND_BASE + DRM_KGSL_GEM_SET_ACTIVE, \
 	 struct drm_kgsl_gem_active)
 
-#define DRM_IOCTL_KGSL_GEM_LOCK_HANDLE \
-DRM_IOWR(DRM_COMMAND_BASE + DRM_KGSL_GEM_LOCK_HANDLE, \
-struct drm_kgsl_gem_lock_handles)
-
-#define DRM_IOCTL_KGSL_GEM_UNLOCK_HANDLE \
-DRM_IOWR(DRM_COMMAND_BASE + DRM_KGSL_GEM_UNLOCK_HANDLE, \
-struct drm_kgsl_gem_unlock_handles)
-
-#define DRM_IOCTL_KGSL_GEM_UNLOCK_ON_TS \
-DRM_IOWR(DRM_COMMAND_BASE + DRM_KGSL_GEM_UNLOCK_ON_TS, \
-struct drm_kgsl_gem_unlock_on_ts)
-
 #define DRM_IOCTL_KGSL_GEM_CREATE_FD \
 DRM_IOWR(DRM_COMMAND_BASE + DRM_KGSL_GEM_CREATE_FD, \
 struct drm_kgsl_gem_create_fd)
@@ -103,13 +88,9 @@ struct drm_kgsl_gem_glockinfo)
 
 
 
-/* Maximum number of sub buffers per GEM object */
 #define DRM_KGSL_GEM_MAX_BUFFERS 3
 
-/* Memory types - these define the source and caching policies
-   of the GEM memory chunk */
 
-/* Legacy definitions left for compatability */
 
 #define DRM_KGSL_GEM_TYPE_EBI          0
 #define DRM_KGSL_GEM_TYPE_SMI          1
@@ -117,17 +98,13 @@ struct drm_kgsl_gem_glockinfo)
 #define DRM_KGSL_GEM_TYPE_KMEM_NOCACHE 3
 #define DRM_KGSL_GEM_TYPE_MEM_MASK     0xF
 
-/* Contiguous memory (PMEM) */
 #define DRM_KGSL_GEM_TYPE_PMEM       0x000100
 
-/* PMEM memory types */
 #define DRM_KGSL_GEM_PMEM_EBI        0x001000
 #define DRM_KGSL_GEM_PMEM_SMI        0x002000
 
-/* Standard paged memory */
 #define DRM_KGSL_GEM_TYPE_MEM        0x010000
 
-/* Caching controls */
 #define DRM_KGSL_GEM_CACHE_NONE      0x000000
 #define DRM_KGSL_GEM_CACHE_WCOMBINE  0x100000
 #define DRM_KGSL_GEM_CACHE_WTHROUGH  0x200000
@@ -135,14 +112,8 @@ struct drm_kgsl_gem_glockinfo)
 #define DRM_KGSL_GEM_CACHE_WBACKWA   0x800000
 #define DRM_KGSL_GEM_CACHE_MASK      0xF00000
 
-/* FD based objects */
 #define DRM_KGSL_GEM_TYPE_FD_FBMEM   0x1000000
 #define DRM_KGSL_GEM_TYPE_FD_MASK    0xF000000
-
-/* Timestamp types */
-#define DRM_KGSL_GEM_TS_3D         0x00000430
-#define DRM_KGSL_GEM_TS_2D         0x00000180
-
 
 struct drm_kgsl_gem_create {
 	uint32_t size;
@@ -198,23 +169,6 @@ struct drm_kgsl_gem_bufcount {
 struct drm_kgsl_gem_active {
 	uint32_t handle;
 	uint32_t active;
-};
-
-struct drm_kgsl_gem_lock_handles {
-	uint32_t num_handles;
-	uint32_t *handle_list;
-	uint32_t pid;
-	uint32_t lock_id;	  /* Returned lock id used for unlocking */
-};
-
-struct drm_kgsl_gem_unlock_handles {
-	uint32_t lock_id;
-};
-
-struct drm_kgsl_gem_unlock_on_ts {
-	uint32_t lock_id;
-	uint32_t timestamp;	 /* This field is a hw generated ts */
-	uint32_t type;		 /* Which pipe to check for ts generation */
 };
 
 struct drm_kgsl_gem_create_fd {

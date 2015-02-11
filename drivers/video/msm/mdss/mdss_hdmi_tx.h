@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -31,11 +31,12 @@ enum hdmi_tx_power_module_type {
 	HDMI_TX_MAX_PM
 };
 
-/* Data filled from device tree */
 struct hdmi_tx_platform_data {
 	bool primary;
 	struct dss_io_data io[HDMI_TX_MAX_IO];
 	struct dss_module_power power_data[HDMI_TX_MAX_PM];
+	u16 ddc_ref_clk;
+	bool drm_workaround;
 };
 
 struct hdmi_audio {
@@ -97,4 +98,5 @@ struct hdmi_tx_ctrl {
 	void *feature_data[HDMI_TX_FEAT_MAX];
 };
 
-#endif /* __MDSS_HDMI_TX_H__ */
+int hdmi_hpd_status(void);
+#endif 

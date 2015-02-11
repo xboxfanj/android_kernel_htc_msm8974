@@ -105,14 +105,6 @@ static void qmi_event_notify(unsigned event, void *priv)
 	mutex_unlock(&handle->handle_lock);
 }
 
-/**
- * init_msm_qmi() - Init function for kernel space QMI
- *
- * This function is implemented to initialize the QMI resources that are common
- * across kernel space QMI users. As it is not necessary for this init function
- * to be module_init function it is called when the first handle of kernel space
- * QMI gets created.
- */
 static void init_msm_qmi(void)
 {
 	static bool msm_qmi_inited;
@@ -131,14 +123,6 @@ static void init_msm_qmi(void)
 	mutex_unlock(&msm_qmi_init_lock);
 }
 
-/**
- * handle_resume_tx() - Handle the Resume_Tx event
- * @work : Pointer to the work strcuture.
- *
- * This function handles the resume_tx event for any QMI client that
- * exists in the kernel space. This function parses the pending_txn_list of
- * the handle and attempts a send for each transaction in that list.
- */
 static void handle_resume_tx(struct work_struct *work)
 {
 	struct delayed_work *rtx_work = to_delayed_work(work);
@@ -270,7 +254,7 @@ int qmi_handle_destroy(struct qmi_handle *handle)
 	rc = wait_event_interruptible(handle->reset_waitq,
 				      list_empty(&handle->txn_list));
 
-	/* TODO: Destroy client owned transaction */
+	
 	msm_ipc_router_close_port((struct msm_ipc_port *)(handle->src_port));
 	kfree(handle->dest_info);
 	kfree(handle);
@@ -323,7 +307,7 @@ static int qmi_encode_and_send_req(struct qmi_txn **ret_txn_handle,
 		return -ENETRESET;
 	}
 
-	/* Allocate Transaction Info */
+	
 	txn_handle = kzalloc(sizeof(struct qmi_txn), GFP_KERNEL);
 	if (!txn_handle) {
 		pr_err("%s: Failed to allocate txn handle\n", __func__);
@@ -334,7 +318,7 @@ static int qmi_encode_and_send_req(struct qmi_txn **ret_txn_handle,
 	INIT_LIST_HEAD(&txn_handle->list);
 	init_waitqueue_head(&txn_handle->wait_q);
 
-	/* Cache the parameters passed & mark it as sync*/
+	
 	txn_handle->handle = handle;
 	txn_handle->resp_desc = resp_desc;
 	txn_handle->resp = resp;
@@ -345,7 +329,7 @@ static int qmi_encode_and_send_req(struct qmi_txn **ret_txn_handle,
 	txn_handle->enc_data = NULL;
 	txn_handle->enc_data_len = 0;
 
-	/* Encode the request msg */
+	
 	encoded_req_len = req_desc->max_msg_len + QMI_HEADER_SIZE;
 	encoded_req = kmalloc(encoded_req_len, GFP_KERNEL);
 	if (!encoded_req) {
@@ -362,7 +346,7 @@ static int qmi_encode_and_send_req(struct qmi_txn **ret_txn_handle,
 	}
 	encoded_req_len = rc;
 
-	/* Encode the header & Add to the txn_list */
+	
 	if (!handle->next_txn_id)
 		handle->next_txn_id++;
 	txn_handle->txn_id = handle->next_txn_id++;
@@ -371,19 +355,13 @@ static int qmi_encode_and_send_req(struct qmi_txn **ret_txn_handle,
 			  encoded_req_len);
 	encoded_req_len += QMI_HEADER_SIZE;
 
-	/*
-	 * Check if this port has transactions queued to its pending list
-	 * and if there are any pending transactions then add the current
-	 * transaction to the pending list rather than sending it. This avoids
-	 * out-of-order message transfers.
-	 */
 	if (!list_empty(&handle->pending_txn_list)) {
 		rc = -EAGAIN;
 		goto append_pend_txn;
 	}
 
 	list_add_tail(&txn_handle->list, &handle->txn_list);
-	/* Send the request */
+	
 	rc = msm_ipc_router_send_msg((struct msm_ipc_port *)(handle->src_port),
 		(struct msm_ipc_addr *)handle->dest_info,
 		encoded_req, encoded_req_len);
@@ -430,7 +408,7 @@ int qmi_send_req_wait(struct qmi_handle *handle,
 	struct qmi_txn *txn_handle = NULL;
 	int rc;
 
-	/* Encode and send the request */
+	
 	rc = qmi_encode_and_send_req(&txn_handle, handle, QMI_SYNC_TXN,
 				     req_desc, req, req_len,
 				     resp_desc, resp, resp_len,
@@ -440,7 +418,7 @@ int qmi_send_req_wait(struct qmi_handle *handle,
 		return rc;
 	}
 
-	/* Wait for the response */
+	
 	if (!timeout_ms) {
 		wait_event(txn_handle->wait_q,
 			   (txn_handle->resp_received ||
@@ -459,6 +437,10 @@ int qmi_send_req_wait(struct qmi_handle *handle,
 	mutex_lock(&handle->handle_lock);
 	if (!txn_handle->resp_received) {
 		pr_err("%s: Response Wait Error %d\n", __func__, rc);
+#ifdef CONFIG_HTC_DEBUG_DSP
+		pr_err("[AUD]trigger ramdump to keep status\n");
+		BUG();
+#endif
 		if (handle->handle_reset)
 			rc = -ENETRESET;
 		if (rc >= 0)
@@ -514,7 +496,7 @@ static int handle_qmi_response(struct qmi_handle *handle,
 	struct qmi_txn *txn_handle;
 	int rc;
 
-	/* Find the transaction handle */
+	
 	txn_handle = find_txn_handle(handle, txn_id);
 	if (!txn_handle) {
 		pr_err("%s Response received for non-existent txn_id %d\n",
@@ -522,7 +504,7 @@ static int handle_qmi_response(struct qmi_handle *handle,
 		return -EINVAL;
 	}
 
-	/* Decode the message */
+	
 	rc = qmi_kernel_decode(txn_handle->resp_desc, txn_handle->resp,
 			       (void *)(resp_msg + QMI_HEADER_SIZE), msg_len);
 	if (rc < 0) {
@@ -536,7 +518,7 @@ static int handle_qmi_response(struct qmi_handle *handle,
 		return rc;
 	}
 
-	/* Handle async or sync resp */
+	
 	switch (txn_handle->type) {
 	case QMI_SYNC_TXN:
 		txn_handle->resp_received = 1;
@@ -588,7 +570,7 @@ int qmi_recv_msg(struct qmi_handle *handle)
 		return -ENETRESET;
 	}
 
-	/* Read the messages */
+	
 	rc = msm_ipc_router_read_msg((struct msm_ipc_port *)(handle->src_port),
 				     &src_addr, &recv_msg, &recv_msg_len);
 	if (rc == -ENOMSG) {
@@ -602,7 +584,14 @@ int qmi_recv_msg(struct qmi_handle *handle)
 		return rc;
 	}
 
-	/* Decode the header & Handle the req, resp, indication message */
+	
+	if (!recv_msg) {
+		pr_err("%s: recv_msg is NULL\n", __func__);
+		return rc;
+	}
+	
+
+	
 	decode_qmi_header(recv_msg, &cntl_flag, &txn_id, &msg_id, &msg_len);
 
 	switch (cntl_flag) {
