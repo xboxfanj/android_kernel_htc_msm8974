@@ -361,7 +361,7 @@ static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 
 	if (req->flags & MDP_ROT_90) {
 		pr_err("unsupported inline rotation\n");
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 	}
 
 	if ((req->dst_rect.w > MAX_DST_W) || (req->dst_rect.h > MAX_DST_H)) {
@@ -440,7 +440,7 @@ static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 
 		if (pipe == NULL) {
 			pr_err("error allocating pipe\n");
-			return -EBUSY;
+			return -ENODEV;
 		}
 
 		ret = mdss_mdp_pipe_map(pipe);
@@ -3140,6 +3140,8 @@ int mdss_mdp_overlay_init(struct msm_fb_data_type *mfd)
 		}
 	}
 
+	if (mdss_mdp_pp_overlay_init(mfd))
+		pr_warn("Failed to initialize pp overlay data.\n");
 	return rc;
 init_fail:
 	kfree(mdp5_data);

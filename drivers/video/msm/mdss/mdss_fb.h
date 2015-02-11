@@ -42,6 +42,27 @@
 #define  MIN(x, y) (((x) < (y)) ? (x) : (y))
 #endif
 
+#define MDP_PP_AD_BL_LINEAR	0x0
+#define MDP_PP_AD_BL_LINEAR_INV	0x1
+
+/**
+ * enum mdp_notify_event - Different frame events to indicate frame update state
+ *
+ * @MDP_NOTIFY_FRAME_BEGIN:	Frame update has started, the frame is about to
+ *				be programmed into hardware.
+ * @MDP_NOTIFY_FRAME_READY:	Frame ready to be kicked off, this can be used
+ *				as the last point in time to synchronized with
+ *				source buffers before kickoff.
+ * @MDP_NOTIFY_FRAME_FLUSHED:	Configuration of frame has been flushed and
+ *				DMA transfer has started.
+ * @MDP_NOTIFY_FRAME_DONE:	Frame DMA transfer has completed.
+ *				- For video mode panels this will indicate that
+ *				  previous frame has been replaced by new one.
+ *				- For command mode/writeback frame done happens
+ *				  as soon as the DMA of the frame is done.
+ * @MDP_NOTIFY_FRAME_TIMEOUT:	Frame DMA transfer has failed to complete within
+ *				a fair amount of time.
+ */
 enum mdp_notify_event {
 	MDP_NOTIFY_FRAME_BEGIN = 1,
 	MDP_NOTIFY_FRAME_READY,
@@ -109,7 +130,8 @@ struct msm_mdp_interface {
 	int (*lut_update)(struct msm_fb_data_type *mfd, struct fb_cmap *cmap);
 	int (*do_histogram)(struct msm_fb_data_type *mfd,
 				struct mdp_histogram *hist);
-	int (*update_ad_input)(struct msm_fb_data_type *mfd);
+	int (*ad_calc_bl)(struct msm_fb_data_type *mfd, int bl_in,
+		int *bl_out, bool *bl_out_notify);
 	int (*panel_register_done)(struct mdss_panel_data *pdata);
 	u32 (*fb_stride)(u32 fb_index, u32 xres, int bpp);
 	int (*splash_fnc) (struct msm_fb_data_type *mfd, int *index, int req);
@@ -173,6 +195,7 @@ struct msm_fb_data_type {
 	int ext_ad_ctrl;
 	u32 ext_bl_ctrl;
 	u32 calib_mode;
+	u32 ad_bl_level;
 	u32 bl_level;
 	u32 bl_scale;
 	u32 bl_min_lvl;

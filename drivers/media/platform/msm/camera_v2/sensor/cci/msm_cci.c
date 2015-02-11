@@ -209,7 +209,6 @@ static int32_t msm_cci_data_queue(struct cci_device *cci_dev,
 		pr_err("%s failed line %d\n", __func__, __LINE__);
 		return -EINVAL;
 	}
-	
 	reg_addr = i2c_cmd->reg_addr;
 	while (cmd_size) {
 		CDBG("%s cmd_size %d addr 0x%x data 0x%x\n", __func__,
@@ -217,33 +216,39 @@ static int32_t msm_cci_data_queue(struct cci_device *cci_dev,
 		delay = i2c_cmd->delay;
 		data[i++] = CCI_I2C_WRITE_CMD;
 
+		/* in case of multiple command
+		* MSM_CCI_I2C_WRITE : address is not continuous, so update
+		*			address for a new packet.
+		* MSM_CCI_I2C_WRITE_SEQ : address is continuous, need to keep
+		*			the incremented address for a
+		*			new packet */
 		if (c_ctrl->cmd == MSM_CCI_I2C_WRITE)
 			reg_addr = i2c_cmd->reg_addr;
 
-		
+		/* either byte or word addr */
 		if (i2c_msg->addr_type == MSM_CAMERA_I2C_BYTE_ADDR)
 			data[i++] = reg_addr;
 		else {
 			data[i++] = (reg_addr & 0xFF00) >> 8;
 			data[i++] = reg_addr & 0x00FF;
 		}
-		
+		/* max of 10 data bytes */
 		do {
-		if (i2c_msg->data_type == MSM_CAMERA_I2C_BYTE_DATA) {
-			data[i++] = i2c_cmd->reg_data;
-			reg_addr++;
-		} else {
-			if ((i + 1) <= 10) {
-				data[i++] = (i2c_cmd->reg_data &
-					0xFF00) >> 8; 
-				data[i++] = i2c_cmd->reg_data &
-					0x00FF; 
-				reg_addr += 2;
-			} else
-				break;
-		}
-		i2c_cmd++;
-		--cmd_size;
+			if (i2c_msg->data_type == MSM_CAMERA_I2C_BYTE_DATA) {
+				data[i++] = i2c_cmd->reg_data;
+				reg_addr++;
+			} else {
+				if ((i + 1) <= 10) {
+					data[i++] = (i2c_cmd->reg_data &
+						0xFF00) >> 8; /* MSB */
+					data[i++] = i2c_cmd->reg_data &
+						0x00FF; /* LSB */
+					reg_addr += 2;
+				} else
+					break;
+			}
+			i2c_cmd++;
+			--cmd_size;
 		} while ((c_ctrl->cmd == MSM_CCI_I2C_WRITE_SEQ) &&
 				(cmd_size > 0) && (i <= 10));
 
