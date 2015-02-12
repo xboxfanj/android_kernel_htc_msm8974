@@ -31,12 +31,13 @@ DTB_FILE = $(addprefix $(KERNEL_OUT)/arch/arm/boot/,$(patsubst %.dts,%.dtb,$(cal
 ZIMG_FILE = $(addprefix $(KERNEL_OUT)/arch/arm/boot/,$(patsubst %.dts,%-zImage,$(call DTS_FILE,$(1))))
 KERNEL_ZIMG = $(KERNEL_OUT)/arch/arm/boot/zImage
 DTC = $(KERNEL_OUT)/scripts/dtc/dtc
+DTBTAGNAME := "htc,project-id = <"
 
 define append-dtb
 mkdir -p $(KERNEL_OUT)/arch/arm/boot;\
 $(foreach DTS_NAME, $(DTS_NAMES), \
    $(foreach d, $(DTS_FILES), \
-      $(DTC) -p 1024 -O dtb -o $(call DTB_FILE,$(d)) $(d); \
+      $(DTC) -p 1024 -O dtb -o $(call DTB_FILE,$(d)) $(d); -d $(DTBTAGNAME) \
       cat $(KERNEL_ZIMG) $(call DTB_FILE,$(d)) > $(call ZIMG_FILE,$(d));))
 endef
 else
