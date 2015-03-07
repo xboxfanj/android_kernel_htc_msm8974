@@ -55,7 +55,6 @@ static bool vfp_state_in_hw(unsigned int cpu, struct thread_info *thread)
 static void vfp_force_reload(unsigned int cpu, struct thread_info *thread)
 {
 	if (vfp_state_in_hw(cpu, thread)) {
-		fmxr(FPEXC, fmrx(FPEXC) & ~FPEXC_EN);
 		vfp_current_hw_state[cpu] = NULL;
 	}
 #ifdef CONFIG_SMP
@@ -74,7 +73,6 @@ static void vfp_thread_flush(struct thread_info *thread)
 	cpu = get_cpu();
 	if (vfp_current_hw_state[cpu] == vfp)
 		vfp_current_hw_state[cpu] = NULL;
-	fmxr(FPEXC, fmrx(FPEXC) & ~FPEXC_EN);
 	put_cpu();
 
 	memset(vfp, 0, sizeof(union vfp_state));
@@ -112,22 +110,11 @@ static int vfp_notifier(struct notifier_block *self, unsigned long cmd, void *v)
 {
 	struct thread_info *thread = v;
 	u32 fpexc;
-#ifdef CONFIG_SMP
-	unsigned int cpu;
-#endif
 
 	switch (cmd) {
 	case THREAD_NOTIFY_SWITCH:
 		fpexc = fmrx(FPEXC);
 
-#ifdef CONFIG_SMP
-		cpu = thread->cpu;
-
-		if ((fpexc & FPEXC_EN) && vfp_current_hw_state[cpu])
-			vfp_save_state(vfp_current_hw_state[cpu], fpexc);
-#endif
-
-		fmxr(FPEXC, fpexc & ~FPEXC_EN);
 		break;
 
 	case THREAD_NOTIFY_FLUSH:
@@ -170,11 +157,11 @@ static void vfp_panic(char *reason, u32 inst)
 {
 	int i;
 
-	printk(KERN_ERR "VFP: Error: %s\n", reason);
-	printk(KERN_ERR "VFP: EXC 0x%08x SCR 0x%08x INST 0x%08x\n",
+	pr_err("VFP: Error: %s\n", reason);
+	pr_err("VFP: EXC 0x%08x SCR 0x%08x INST 0x%08x\n",
 		fmrx(FPEXC), fmrx(FPSCR), inst);
 	for (i = 0; i < 32; i += 2)
-		printk(KERN_ERR "VFP: s%2u: 0x%08x s%2u: 0x%08x\n",
+		pr_err(KERN_ERR "VFP: s%2u: 0x%08x s%2u: 0x%08x\n",
 		       i, vfp_get_float(i), i+1, vfp_get_float(i+1));
 }
 
@@ -303,16 +290,13 @@ int vfp_pm_suspend(void)
 
 	
 	if (fpexc & FPEXC_EN) {
-		printk(KERN_DEBUG "%s: saving vfp state\n", __func__);
+		pr_debug("%s: saving vfp state\n", __func__);
 		vfp_save_state(&ti->vfpstate, fpexc);
 
-		
-		fmxr(FPEXC, fmrx(FPEXC) & ~FPEXC_EN);
 	} else if (vfp_current_hw_state[ti->cpu]) {
 #ifndef CONFIG_SMP
 		fmxr(FPEXC, fpexc | FPEXC_EN);
 		vfp_save_state(vfp_current_hw_state[ti->cpu], fpexc);
-		fmxr(FPEXC, fpexc);
 #endif
 	}
 
@@ -324,11 +308,32 @@ int vfp_pm_suspend(void)
 
 void vfp_pm_resume(void)
 {
-	
+        struct thread_info *ti = current_thread_info();
+        u32 *vfpstate = (u32 *)(&ti->vfpstate);
+        u32 temp = 0;
+        u32 fpexc = 0, fpscr = 0, fpinst = 0, fpinst2 = 0;
+
+	/* ensure we have access to the vfp */
 	vfp_enable(NULL);
 
-	
-	fmxr(FPEXC, fmrx(FPEXC) & ~FPEXC_EN);
+        /* restore VFP registers and state */
+	/* we use similar code as in the macro, VFPFLDMIA, to restore VFP registers */
+	asm volatile (
+		"LDC	p11, cr0, [%0],#32*4\n"
+		//"VFPFMRX \tmp, MVFR0\n"
+		"MRC	p10, 7, %1, cr7, cr0, 0\n"
+		"and	%1, %1, %6\n"
+		"cmp	%1, #2\n"
+		"ldceql	p11, cr0, [%0],#32*4\n"
+		"addne	%0, %0, #32*4\n"
+		"ldmia	%0, {%2, %3, %4, %5}\n"
+		//"VFPFMXR      FPSCR, %3\n"
+		"MCR	p10, 7, %3, cr1, cr0, 0"
+		: "+r"(vfpstate), "+r"(temp), "+r"(fpexc), "+r"(fpscr), "+r"(fpinst), "+r"(fpinst2)
+		: "r" (MVFR0_A_SIMD_MASK)
+		: "cc"
+	);
+
 }
 
 static int vfp_cpu_pm_notifier(struct notifier_block *self, unsigned long cmd,
@@ -368,7 +373,6 @@ void vfp_sync_hwstate(struct thread_info *thread)
 
 		fmxr(FPEXC, fpexc | FPEXC_EN);
 		vfp_save_state(&thread->vfpstate, fpexc | FPEXC_EN);
-		fmxr(FPEXC, fpexc);
 	}
 
 	put_cpu();
@@ -513,16 +517,15 @@ void kernel_neon_begin(void)
 	unsigned int cpu;
 	u32 fpexc;
 
-	/*
-	 * Kernel mode NEON is only allowed outside of interrupt context
-	 * with preemption disabled. This will make sure that the kernel
-	 * mode NEON register contents never need to be preserved.
-	 */
-	BUG_ON(in_interrupt());
-	cpu = get_cpu();
+        /*
+        * Kernel mode NEON is only allowed outside of interrupt context
+        * with preemption disabled. This will make sure that the kernel
+        * mode NEON register contents never need to be preserved.
+        */
+       BUG_ON(in_interrupt());
+       cpu = get_cpu();
 
-	fpexc = fmrx(FPEXC) | FPEXC_EN;
-	fmxr(FPEXC, fpexc);
+       fpexc = fmrx(FPEXC) | FPEXC_EN;
 
 	/*
 	 * Save the userland NEON/VFP state. Under UP,
@@ -540,8 +543,6 @@ EXPORT_SYMBOL(kernel_neon_begin);
 
 void kernel_neon_end(void)
 {
-	/* Disable the NEON/VFP unit. */
-	fmxr(FPEXC, fmrx(FPEXC) & ~FPEXC_EN);
 	put_cpu();
 }
 EXPORT_SYMBOL(kernel_neon_end);
@@ -567,7 +568,7 @@ static int __init vfp_init(void)
 	barrier();
 	vfp_vector = vfp_null_entry;
 
-	printk(KERN_INFO "VFP support v0.3: ");
+	pr_info("VFP support v0.3: ");
 	if (VFP_arch)
 		printk("not present\n");
 	else if (vfpsid & FPSID_NODOUBLE) {

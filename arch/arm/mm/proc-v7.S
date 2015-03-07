@@ -16,6 +16,7 @@
 #include <asm/hwcap.h>
 #include <asm/pgtable-hwdef.h>
 #include <asm/pgtable.h>
+#include <asm/vfpmacros.h>
 
 #include "proc-macros.S"
 
@@ -167,6 +168,14 @@ __v7_ca15mp_setup:
 	mcr	p15, 0, r0, c1, c0, 1
 	mov	r10, #0
 1:
+	@ enable CP10 / CP11 access right
+	ldr	r0, =(0xF << 20)
+	mcr	p15, 0, r0, c1, c0, 2
+	orr	r0, r0, #FPEXC_EN		@ user FPEXC has the enable bit set
+	bic	r0, r0, #FPEXC_EX		@ make sure exceptions are disabled
+	VFPFMXR FPEXC, r0			@ enable VFP, disable any pending
+						@ exceptions, so we can get at the
+						@ rest of it
 #ifdef CONFIG_SMP
 	ALT_SMP(mrc	p15, 0, r0, c1, c0, 1)
 	ALT_UP(mov	r0, #(1 << 6))		@ fake it for UP
