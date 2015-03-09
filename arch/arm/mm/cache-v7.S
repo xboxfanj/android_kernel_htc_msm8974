@@ -97,7 +97,15 @@ loop3:
  ARM(	orr	r11, r11, r7, lsl r2	)	@ factor index number into r11
  THUMB(	lsl	r6, r7, r2		)
  THUMB(	orr	r11, r11, r6		)	@ factor index number into r11
-	mcr	p15, 0, r11, c7, c14, 2		@ clean & invalidate by set/way
+#replace DCCISW by DCISW+DCCSW
+        cmp     r10, #2
+        mrsne   r1, cpsr                      @disable IRQ and save flag to make clean and invalidate atomic
+        orrne   r8, r1, #PSR_I_BIT | PSR_F_BIT
+        msrne   cpsr_c, r8
+        mcrne   p15, 0, r11, c7, c10, 2         @ clean by set/way
+        mcrne   p15, 0, r11, c7, c6, 2         @ invalidate by set/way
+        msrne   cpsr_c, r1
+        mcreq   p15, 0, r11, c7, c14, 2         @ clean & invalidate by set/way
 	subs	r9, r9, #1			@ decrement the way
 	bge	loop3
 	subs	r7, r7, #1			@ decrement the index
