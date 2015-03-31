@@ -1105,6 +1105,7 @@ void mdss_dsi_cmd_mdp_busy(struct mdss_dsi_ctrl_pdata *ctrl)
 {
 	unsigned long flags;
 	int need_wait = 0;
+	int rc = 1;
 
 	pr_debug("%s: start pid=%d\n",
 				__func__, current->pid);
@@ -1117,8 +1118,13 @@ void mdss_dsi_cmd_mdp_busy(struct mdss_dsi_ctrl_pdata *ctrl)
 		
 		pr_debug("%s: pending pid=%d\n",
 				__func__, current->pid);
-		if (!wait_for_completion_timeout(&ctrl->mdp_comp,
-					msecs_to_jiffies(DMA_TX_TIMEOUT)))
+		rc = wait_for_completion_timeout(&ctrl->mdp_comp,
+					msecs_to_jiffies(DMA_TX_TIMEOUT));
+		spin_lock_irqsave(&ctrl->mdp_lock, flags);
+		if (!ctrl->mdp_busy)
+			rc = 1;
+		spin_unlock_irqrestore(&ctrl->mdp_lock, flags);
+		if (!rc) {
 			pr_err("%s: timeout error\n", __func__);
 	}
 	pr_debug("%s: done pid=%d\n",
@@ -1287,7 +1293,7 @@ static int dsi_event_thread(void *data)
 			spin_lock_irqsave(&ctrl->mdp_lock, flag);
 			ctrl->mdp_busy = false;
 			mdss_dsi_disable_irq_nosync(ctrl, DSI_MDP_TERM);
-			complete(&ctrl->mdp_comp);
+			complete_all(&ctrl->mdp_comp);
 			spin_unlock_irqrestore(&ctrl->mdp_lock, flag);
 
 			
@@ -1466,7 +1472,7 @@ irqreturn_t mdss_dsi_isr(int irq, void *ptr)
 		spin_lock(&ctrl->mdp_lock);
 		ctrl->mdp_busy = false;
 		mdss_dsi_disable_irq_nosync(ctrl, DSI_MDP_TERM);
-		complete(&ctrl->mdp_comp);
+		complete_all(&ctrl->mdp_comp);
 		spin_unlock(&ctrl->mdp_lock);
 	}
 
