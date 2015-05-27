@@ -64,11 +64,7 @@ struct modem_data {
 
 #define subsys_to_drv(d) container_of(d, struct modem_data, subsys_desc)
 
-#if defined(CONFIG_HTC_DEBUG_SSR)
-static void log_modem_sfr(struct subsys_device *dev)
-#else
 static void log_modem_sfr(void)
-#endif
 {
 	u32 size;
 	char *smem_reason, reason[MAX_SSR_REASON_LEN];
@@ -85,9 +81,6 @@ static void log_modem_sfr(void)
 
 	strlcpy(reason, smem_reason, min(size, sizeof(reason)));
 	pr_err("modem subsystem failure reason: %s.\n", reason);
-#if defined(CONFIG_HTC_DEBUG_SSR)
-	subsys_set_restart_reason(dev, reason);
-#endif
 
 	smem_reason[0] = '\0';
 	wmb();
@@ -95,11 +88,7 @@ static void log_modem_sfr(void)
 
 static void restart_modem(struct modem_data *drv)
 {
-#if defined(CONFIG_HTC_DEBUG_SSR)
-	log_modem_sfr(drv->subsys);
-#else
 	log_modem_sfr();
-#endif
 	drv->ignore_errors = true;
 	modem_read_spmi_setting(get_radio_flag() & BIT(3));
 	subsystem_restart_dev(drv->subsys);
@@ -223,9 +212,6 @@ static irqreturn_t modem_wdog_bite_intr_handler(int irq, void *dev_id)
 	if (drv->ignore_errors)
 		return IRQ_HANDLED;
 	pr_err("Watchdog bite received from modem software!\n");
-#if defined(CONFIG_HTC_DEBUG_SSR)
-	subsys_set_restart_reason(drv->subsys, "Watchdog bite received from modem software!");
-#endif
 	subsys_set_crash_status(drv->subsys, true);
 	restart_modem(drv);
 	return IRQ_HANDLED;
@@ -375,6 +361,8 @@ static int __devinit pil_mss_loadable_init(struct modem_data *drv,
 	if (q6->self_auth) {
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						    "rmb_base");
+		if (!res)
+			return -ENOMEM;
 		q6->rmb_base = devm_request_and_ioremap(&pdev->dev, res);
 		q6->rmb_base_phys = (phys_addr_t*)res->start;
 		if (!q6->rmb_base)

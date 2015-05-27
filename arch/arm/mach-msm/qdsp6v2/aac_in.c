@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -25,12 +25,15 @@
 #include "audio_utils.h"
 
 
+/* Buffer with meta*/
 #define PCM_BUF_SIZE		(4096 + sizeof(struct meta_in))
 
+/* Maximum 5 frames in buffer with meta */
 #define FRAME_SIZE		(1 + ((1536+sizeof(struct meta_out_dsp)) * 5))
 
 #define AAC_FORMAT_ADTS 65535
 
+/* ------------------- device --------------------- */
 static long aac_in_ioctl(struct file *file,
 				unsigned int cmd, unsigned long arg)
 {
@@ -46,7 +49,7 @@ static long aac_in_ioctl(struct file *file,
 
 		enc_cfg = audio->enc_cfg;
 		aac_config = audio->codec_cfg;
-		
+		/* ENCODE CFG (after new set of API's are published )bharath*/
 		pr_debug("%s:session id %d: default buf alloc[%d]\n", __func__,
 				audio->ac->session, audio->buf_alloc);
 		if (audio->enabled == 1) {
@@ -152,9 +155,22 @@ static long aac_in_ioctl(struct file *file,
 			cfg.channels = 2;
 		cfg.sample_rate = enc_cfg->sample_rate;
 		cfg.bit_rate = enc_cfg->bit_rate;
-		
-		cfg.stream_format = ((enc_cfg->stream_format == \
-			0x00) ? AUDIO_AAC_FORMAT_ADTS : AUDIO_AAC_FORMAT_RAW);
+
+		switch (enc_cfg->stream_format) {
+		case 0x00:
+			cfg.stream_format = AUDIO_AAC_FORMAT_ADTS;
+			break;
+		case 0x01:
+			cfg.stream_format = AUDIO_AAC_FORMAT_LOAS;
+			break;
+		case 0x02:
+			cfg.stream_format = AUDIO_AAC_FORMAT_ADIF;
+			break;
+		default:
+		case 0x03:
+			cfg.stream_format = AUDIO_AAC_FORMAT_RAW;
+		}
+
 		pr_debug("%s:session id %d: Get-aac-cfg: format=%d sr=%d"
 			"bitrate=%d\n", __func__, audio->ac->session,
 			cfg.stream_format, cfg.sample_rate, cfg.bit_rate);
@@ -165,6 +181,7 @@ static long aac_in_ioctl(struct file *file,
 	case AUDIO_SET_AAC_ENC_CONFIG: {
 		struct msm_audio_aac_enc_config cfg;
 		struct msm_audio_aac_enc_config *enc_cfg;
+		uint32_t min_bitrate, max_bitrate;
 		enc_cfg = audio->enc_cfg;
 		if (copy_from_user(&cfg, (void *)arg, sizeof(cfg))) {
 			rc = -EFAULT;
@@ -173,10 +190,23 @@ static long aac_in_ioctl(struct file *file,
 		pr_debug("%s:session id %d: Set-aac-cfg: stream=%d\n", __func__,
 					audio->ac->session, cfg.stream_format);
 
-		if ((cfg.stream_format != AUDIO_AAC_FORMAT_RAW)  &&
-			(cfg.stream_format != AAC_FORMAT_ADTS)) {
-			pr_err("%s:session id %d: unsupported AAC format\n",
-				__func__, audio->ac->session);
+		switch (cfg.stream_format) {
+		case AUDIO_AAC_FORMAT_ADTS:
+			enc_cfg->stream_format = 0x00;
+			break;
+		case AUDIO_AAC_FORMAT_LOAS:
+			enc_cfg->stream_format = 0x01;
+			break;
+		case AUDIO_AAC_FORMAT_ADIF:
+			enc_cfg->stream_format = 0x02;
+			break;
+		case AUDIO_AAC_FORMAT_RAW:
+			enc_cfg->stream_format = 0x03;
+			break;
+		default:
+			pr_err("%s:session id %d: unsupported AAC format %d\n",
+				__func__, audio->ac->session,
+				cfg.stream_format);
 			rc = -EINVAL;
 			break;
 		}
@@ -189,13 +219,25 @@ static long aac_in_ioctl(struct file *file,
 			rc = -EINVAL;
 			break;
 		}
-		if ((cfg.sample_rate < 8000) && (cfg.sample_rate > 48000)) {
+		if ((cfg.sample_rate < 8000) || (cfg.sample_rate > 48000)) {
 			pr_err("%s: ERROR in setting samplerate = %d\n",
 				__func__, cfg.sample_rate);
 			rc = -EINVAL;
 			break;
 		}
-		if ((cfg.bit_rate < 4000) || (cfg.bit_rate > 192000)) {
+		/* For aac-lc, min_bit_rate = min(24Kbps, 0.5*SR*num_chan);
+		max_bi_rate = min(192Kbps, 6*SR*num_chan);
+		min_sample_rate = 8000Hz, max_rate=48000 */
+		min_bitrate = ((cfg.sample_rate)*(cfg.channels))/2;
+		if (min_bitrate < 24000)
+			min_bitrate = 24000;
+		max_bitrate = 6*(cfg.sample_rate)*(cfg.channels);
+		if (max_bitrate > 320000)
+			max_bitrate = 320000;
+		if ((cfg.bit_rate < min_bitrate) ||
+					(cfg.bit_rate > max_bitrate)) {
+			pr_err("%s: bitrate permissible: max=%d, min=%d\n",
+				__func__, max_bitrate, min_bitrate);
 			pr_err("%s: ERROR in setting bitrate = %d\n",
 				__func__, cfg.bit_rate);
 			rc = -EINVAL;
@@ -204,9 +246,6 @@ static long aac_in_ioctl(struct file *file,
 		enc_cfg->sample_rate = cfg.sample_rate;
 		enc_cfg->channels = cfg.channels;
 		enc_cfg->bit_rate = cfg.bit_rate;
-		enc_cfg->stream_format =
-			((cfg.stream_format == AUDIO_AAC_FORMAT_RAW) ? \
-								0x03 : 0x00);
 		pr_debug("%s:session id %d: Set-aac-cfg:SR= 0x%x ch=0x%x"
 			"bitrate=0x%x, format(adts/raw) = %d\n",
 			__func__, audio->ac->session, enc_cfg->sample_rate,
@@ -271,7 +310,7 @@ static int aac_in_open(struct inode *inode, struct file *file)
 				"driver\n", __func__);
 		return -ENOMEM;
 	}
-	
+	/* Allocate memory for encoder config param */
 	audio->enc_cfg = kzalloc(sizeof(struct msm_audio_aac_enc_config),
 				GFP_KERNEL);
 	if (audio->enc_cfg == NULL) {
@@ -300,6 +339,9 @@ static int aac_in_open(struct inode *inode, struct file *file)
 	init_waitqueue_head(&audio->read_wait);
 	init_waitqueue_head(&audio->write_wait);
 
+	/* Settings will be re-config at AUDIO_SET_CONFIG,
+	* but at least we need to have initial config
+	*/
 	audio->str_cfg.buffer_size = FRAME_SIZE;
 	audio->str_cfg.buffer_count = FRAME_NUM;
 	audio->min_frame_size = 1536;
@@ -307,7 +349,7 @@ static int aac_in_open(struct inode *inode, struct file *file)
 	enc_cfg->sample_rate = 8000;
 	enc_cfg->channels = 1;
 	enc_cfg->bit_rate = 16000;
-	enc_cfg->stream_format = 0x00;
+	enc_cfg->stream_format = 0x00;/* 0:ADTS, 3:RAW */
 	audio->buf_cfg.meta_info_enable = 0x01;
 	audio->buf_cfg.frames_per_buf   = 0x01;
 	audio->pcm_cfg.buffer_count = PCM_BUF_COUNT;
@@ -329,7 +371,7 @@ static int aac_in_open(struct inode *inode, struct file *file)
 		kfree(audio);
 		return -ENOMEM;
 	}
-	
+	/* open aac encoder in tunnel mode */
 	audio->buf_cfg.frames_per_buf = 0x01;
 
 	if ((file->f_mode & FMODE_WRITE) &&
@@ -358,7 +400,7 @@ static int aac_in_open(struct inode *inode, struct file *file)
 			rc = -ENODEV;
 			goto fail;
 		}
-		
+		/* register for tx overflow (valid for tunnel mode only) */
 		rc = q6asm_reg_tx_overflow(audio->ac, 0x01);
 		if (rc < 0) {
 			pr_err("%s:session id %d: TX Overflow registration"

@@ -183,6 +183,7 @@ config SND_SOC_MSM8974
 	select SND_DYNAMIC_MINORS
 	select AUDIO_OCMEM
 	select DOLBY_DAP
+	select SND_HWDEP
 	help
 	 To add support for SoC audio on MSM8974.
 	 This will enable sound soc drivers which
@@ -270,4 +271,11 @@ config SND_SOC_MDM9625
 	select SND_DYNAMIC_MINORS
 	help
 	 To add support for SoC audio on MDM9625 boards.
+
+config HD_AUDIO
+    tristate "HD Audio"
+    default n
+    help
+	 To add support for 64/88.2/96/176.4/192kHz Audio.
+
 endmenu

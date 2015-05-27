@@ -107,10 +107,6 @@ int board_get_usb_ats(void);
 #include "f_projector.c"
 #include "f_projector2.c"
 
-#ifdef CONFIG_PERFLOCK
-#include <mach/perflock.h>
-#endif
-
 MODULE_AUTHOR("Mike Lockwood");
 MODULE_DESCRIPTION("Android Composite USB Driver");
 MODULE_LICENSE("GPL");
@@ -231,11 +227,6 @@ static int usb_diag_update_pid_and_serial_num(uint32_t pid, const char *snum);
 static int diag_update_supported = 0; 
 
 
-#ifdef CONFIG_PERFLOCK
-static struct perf_lock android_usb_perf_lock;
-#endif
-
-
 #define STRING_MANUFACTURER_IDX		0
 #define STRING_PRODUCT_IDX		1
 #define STRING_SERIAL_IDX		2
@@ -291,22 +282,6 @@ enum android_device_state {
 	USB_SUSPENDED,
 	USB_RESUMED
 };
-#ifdef CONFIG_PERFLOCK
-static unsigned int check_enable_function_performancelock(void)
-{
-	struct android_dev *dev = _android_dev;
-	struct android_configuration *conf;
-	struct android_usb_function_holder *f_holder;
-	
-	conf = list_entry(dev->configs.next, struct android_configuration, list_item);
-
-	list_for_each_entry(f_holder, &conf->enabled_functions, enabled_list) {
-		if (f_holder->f->performance_lock == 1)
-			return 1;
-	}
-	return 0;
-}
-#endif
 
 static void android_pm_qos_update_latency(struct android_dev *dev, int vote)
 {
@@ -328,6 +303,9 @@ static void android_pm_qos_update_latency(struct android_dev *dev, int vote)
 	last_vote = vote;
 }
 
+
+void android_broadcast_abnormal_usb_reset(void);
+
 static void android_work(struct work_struct *data)
 {
 	struct android_dev *dev = container_of(data, struct android_dev, work);
@@ -340,9 +318,6 @@ static void android_work(struct work_struct *data)
 	char **uevent_envp = NULL;
 	static enum android_device_state last_uevent, next_state;
 	unsigned long flags;
-#ifdef CONFIG_PERFLOCK
-	static int perflock_state = 0;
-#endif
 	int pm_qos_vote = -1;
 
 	printk(KERN_INFO "[USB] android_work : sw_suspended %d  suspended %d config %d,connect2pc %d",dev->sw_suspended,dev->suspended,cdev->config?1:0,connect2pc);
@@ -356,9 +331,6 @@ static void android_work(struct work_struct *data)
 	} else if (cdev->config) {
 		uevent_envp = configured;
 		next_state = USB_CONFIGURED;
-#ifdef CONFIG_PERFLOCK
-		perflock_state = check_enable_function_performancelock();
-#endif
 	} else if (dev->connected != dev->sw_connected) {
 		uevent_envp = dev->connected ? connected : disconnected;
 		next_state = dev->connected ? USB_CONNECTED : USB_DISCONNECTED;
@@ -374,27 +346,6 @@ static void android_work(struct work_struct *data)
 	if (pm_qos_vote != -1)
 		android_pm_qos_update_latency(dev, pm_qos_vote);
 
-
-#ifdef CONFIG_PERFLOCK
-	if (!cdev->config) {
-		if (is_perf_lock_active(&android_usb_perf_lock)) {
-			printk(KERN_INFO "[USB] Performance lock released\n");
-			perf_unlock(&android_usb_perf_lock);
-		}
-	} else {
-		if (perflock_state) {
-			if (!is_perf_lock_active(&android_usb_perf_lock)) {
-				printk(KERN_INFO "[USB] Performance lock requested\n");
-				perf_lock(&android_usb_perf_lock);
-			}
-		} else {
-			if (is_perf_lock_active(&android_usb_perf_lock)) {
-				printk(KERN_INFO "[USB] Performance lock released\n");
-				perf_unlock(&android_usb_perf_lock);
-			}
-		}
-	}
-#endif
 
 	if (uevent_envp) {
 		if (((uevent_envp == connected) &&
@@ -422,6 +373,7 @@ static void android_work(struct work_struct *data)
 		pr_info("%s: sent uevent %s\n", __func__, uevent_envp[0]);
 		if (dev->pdata->vzw_unmount_cdrom) {
 			cancel_delayed_work(&cdev->cdusbcmd_vzw_unmount_work);
+			cdev->unmount_cdrom_mask = 1 << 3 | 1 << 4;
 			schedule_delayed_work(&cdev->cdusbcmd_vzw_unmount_work,30 * HZ);
 		}
 	} else {
@@ -692,15 +644,9 @@ static void adb_closed_callback(void)
 
 static void adb_read_timeout(void)
 {
-	struct android_dev *dev = _android_dev;
-
 	pr_info("%s: adb read timeout, re-connect to PC\n",__func__);
 
-	if (dev) {
-		android_disable(dev);
-		mdelay(100);
-		android_enable(dev);
-	}
+	android_force_reset();
 }
 
 
@@ -1075,7 +1021,7 @@ static int ncm_function_bind_config(struct android_usb_function *f,
 
     if (c->cdev->gadget)
         c->cdev->gadget->miMaxMtu = ETH_FRAME_LEN_MAX - ETH_HLEN;
-	ret = gether_setup_name(c->cdev->gadget, ncm->ethaddr, "usb");
+	ret = gether_setup_name(c->cdev->gadget, ncm->ethaddr, "ncm");
 	if (ret) {
 		pr_err("%s: gether setup failed err:%d\n", __func__, ret);
 		return ret;
@@ -1469,7 +1415,7 @@ static ssize_t acm_baud_rate_store(
 	}
 
 	if (_f_acm == NULL) {
-		USB_ERR("%s: acm didnt init\n", __func__);
+		USB_WARNING("%s: acm didnt init\n", __func__);
 		return size;
 	}
 
@@ -1495,7 +1441,7 @@ static ssize_t acm_baud_rate_show(struct device *dev, struct device_attribute *a
 	struct tty_struct *port_tty = NULL;
 
 	if (_f_acm == NULL) {
-		USB_ERR("%s: acm didnt init\n", __func__);
+		USB_WARNING("%s: acm didnt init\n", __func__);
 		return size;
 	}
 
@@ -2025,6 +1971,7 @@ struct mass_storage_function_config {
 	struct fsg_common *common;
 };
 
+#define MAX_LUN_NAME 8
 static int mass_storage_function_init(struct android_usb_function *f,
 					struct usb_composite_dev *cdev)
 {
@@ -2060,8 +2007,6 @@ static int mass_storage_function_init(struct android_usb_function *f,
 		config->fsg.nluns = 1;
 		config->fsg.luns[0].removable = 1;
 	}
-
-
 
 	common = fsg_common_init(NULL, cdev, &config->fsg);
 	if (IS_ERR(common)) {
@@ -2489,8 +2434,37 @@ static ssize_t projector2_width_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", config->set_display_info.wWidth);
 }
 
+#if HSML_VERSION_12
+#define cHSML_WIDTH_SIZE        2
+
+static ssize_t projector2_width_store(struct device *dev,
+        struct device_attribute *attr, const char *buff, size_t size)
+{
+struct android_usb_function *f = dev_get_drvdata(dev);
+struct hsml_protocol *config = f->config;
+u16 uValue;
+u8 aucWidth[cHSML_WIDTH_SIZE];
+
+    if (size <= cHSML_WIDTH_SIZE) {
+        memset(aucWidth, 0, sizeof(aucWidth));
+        memcpy(aucWidth, buff, size);
+        uValue = be16_to_cpu(*((__le16 *) aucWidth));
+        config->set_display_info.wWidth = uValue;
+        return size;
+    } else {
+        printk(KERN_ERR "%s: size is invalid %d/%d\n", __func__, size, cHSML_WIDTH_SIZE);
+    }
+    return -EINVAL;
+}
+#endif
+
 static DEVICE_ATTR(client_width, S_IRUGO | S_IWUSR, projector2_width_show,
-						    NULL);
+#if !HSML_VERSION_12
+                            NULL
+#else
+                            projector2_width_store
+#endif
+        );
 
 static ssize_t projector2_height_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -2500,8 +2474,36 @@ static ssize_t projector2_height_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", config->set_display_info.wHeight);
 }
 
+#if HSML_VERSION_12
+static ssize_t projector2_height_store(struct device *dev,
+        struct device_attribute *attr, const char *buff, size_t size)
+{
+struct android_usb_function *f = dev_get_drvdata(dev);
+struct hsml_protocol *config = f->config;
+u16 uValue;
+u8 aucWidth[cHSML_WIDTH_SIZE];
+
+    if (size <= cHSML_WIDTH_SIZE) {
+        memset(aucWidth, 0, sizeof(aucWidth));
+        memcpy(aucWidth, buff, size);
+        uValue = be16_to_cpu(*((__le16 *) aucWidth));
+        config->set_display_info.wHeight = uValue;
+        return size;
+    } else {
+        printk(KERN_ERR "%s: size is invalid %d/%d\n", __func__, size, cHSML_WIDTH_SIZE);
+    }
+
+    return -EINVAL;
+}
+#endif
+
 static DEVICE_ATTR(client_height, S_IRUGO | S_IWUSR, projector2_height_show,
-						    NULL);
+#if !HSML_VERSION_12
+                            NULL
+#else
+                            projector2_height_store
+#endif
+                            );
 
 static ssize_t projector2_maxfps_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -2526,6 +2528,11 @@ static DEVICE_ATTR(client_pixel_format, S_IRUGO | S_IWUSR, projector2_pixel_form
 						    NULL);
 
 static DEVICE_ATTR(client_context_info, S_IRUGO | S_IWUSR, NULL, context_info_store);
+#if HSML_VERSION_12
+static DEVICE_ATTR(client_ver, S_IRUGO | S_IWUSR, projector2_ver_show, NULL);
+static DEVICE_ATTR(client_cap, S_IRUGO | S_IWUSR, projector2_cap_show, NULL);
+static DEVICE_ATTR(client_uuid, S_IRUGO | S_IWUSR, NULL, projector2_uuid_store);
+#endif
 
 static struct device_attribute *projector2_function_attributes[] = {
 	&dev_attr_client_width,
@@ -2533,10 +2540,13 @@ static struct device_attribute *projector2_function_attributes[] = {
 	&dev_attr_client_maxfps,
 	&dev_attr_client_pixel_format,
 	&dev_attr_client_context_info,
+#if HSML_VERSION_12
+	&dev_attr_client_ver,
+	&dev_attr_client_cap,
+	&dev_attr_client_uuid,
+#endif
 	NULL
 };
-
-
 
 struct android_usb_function projector2_function = {
 	.name		= "projector2",
@@ -3082,6 +3092,16 @@ static ssize_t bugreport_debug_store(struct device *pdev,
 
 	return size;
 }
+static ssize_t adb_reboot_debug_store(struct device *pdev,
+		struct device_attribute *attr, const char *buff, size_t size)
+{
+	char buf[256];
+	strlcpy(buf, buff, sizeof(buf));
+	buf[size] = 0;
+	pr_info("%s\n",buf);
+
+	return size;
+}
 
 #define DESCRIPTOR_ATTR(field, format_string)				\
 static ssize_t								\
@@ -3144,6 +3164,7 @@ static DEVICE_ATTR(state, S_IRUGO, state_show, NULL);
 static DEVICE_ATTR(remote_wakeup, S_IRUGO | S_IWUSR,
 		remote_wakeup_show, remote_wakeup_store);
 static DEVICE_ATTR(bugreport_debug, 0664, NULL, bugreport_debug_store);
+static DEVICE_ATTR(adb_reboot_debug, 0664, NULL, adb_reboot_debug_store);
 
 static struct device_attribute *android_usb_attributes[] = {
 	#if 0
@@ -3163,6 +3184,7 @@ static struct device_attribute *android_usb_attributes[] = {
 	&dev_attr_state,
 	&dev_attr_remote_wakeup,
 	&dev_attr_bugreport_debug,
+	&dev_attr_adb_reboot_debug,
 	NULL
 };
 
@@ -3284,6 +3306,8 @@ android_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *c)
 	struct android_configuration	*conf;
 	int value = -EOPNOTSUPP;
 	unsigned long flags;
+	bool do_work = false;
+	bool prev_configured = false;
 
 	req->zero = 0;
 	req->complete = composite_setup_complete;
@@ -3307,6 +3331,8 @@ android_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *c)
 			}
 		}
 
+	if (cdev->config)
+		prev_configured = true;
 	if (value < 0)
 		value = acc_ctrlrequest(cdev, c);
 
@@ -3322,13 +3348,15 @@ android_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *c)
 	spin_lock_irqsave(&cdev->lock, flags);
 	if (!dev->connected) {
 		dev->connected = 1;
-		schedule_work(&dev->work);
+		do_work = true;
 	} else if (c->bRequest == USB_REQ_SET_CONFIGURATION &&
 						cdev->config) {
-		schedule_work(&dev->work);
+		if (!prev_configured)
+			do_work = true;
 	}
 	spin_unlock_irqrestore(&cdev->lock, flags);
-
+	if (do_work)
+		schedule_work(&dev->work);
 	return value;
 }
 
@@ -3353,11 +3381,6 @@ static void android_disconnect(struct usb_gadget *gadget)
 	dev->connected = 0;
 	schedule_work(&dev->work);
 	spin_unlock_irqrestore(&cdev->lock, flags);
-
-	if (switch_get_state(&ml_switch)) {
-		switch_set_state(&ml_switch, 0);
-		pr_info("%s:[mirror_link] ml_switch set 0\n", __func__);
-	}
 }
 
 static void android_suspend(struct usb_gadget *gadget)
@@ -3563,6 +3586,10 @@ static int __devinit android_probe(struct platform_device *pdev)
 		}
 
 		pdata->streaming_func_count = len;
+
+		ret = of_property_read_u32(pdev->dev.of_node,
+				"qcom,android-usb-uicc-nluns",
+				&pdata->uicc_nluns);
 	} else {
 		pdata = pdev->dev.platform_data;
 	}
@@ -3614,10 +3641,6 @@ static int __devinit android_probe(struct platform_device *pdev)
 	} else {
 		dev_dbg(&pdev->dev, "failed to get mem resource\n");
 	}
-
-#ifdef CONFIG_PERFLOCK
-	perf_lock_init(&android_usb_perf_lock, TYPE_PERF_LOCK, PERF_LOCK_LOW, "android_usb");
-#endif
 
 	ret = android_create_device(android_dev, composite_driver.usb_core_id);
 	if (ret) {
@@ -3730,6 +3753,22 @@ static struct platform_driver android_platform_driver = {
 	.shutdown = android_shutdown,
 };
 
+void android_broadcast_abnormal_usb_reset(void)
+{
+
+	char *envp[] = {"EVENT=ABNORMAL_USB_RESET", NULL };
+	int ats = board_get_usb_ats();
+	int ret;
+	if (!ats)
+		return;
+	ret = kobject_uevent_env(&_android_dev->dev->kobj, KOBJ_CHANGE,envp);
+	if (!ret)
+		printk(KERN_INFO "[USB] broadcast abnormal usb reset\n");
+	else
+		printk(KERN_INFO "[USB] fail to broadcast abnormal usb reset\n");
+
+}
+
 static int __init init(void)
 {
 	int ret;
@@ -3742,6 +3781,7 @@ static int __init init(void)
 	composite_driver.suspend = android_suspend;
 	composite_driver.resume = android_resume;
 	composite_driver.mute_disconnect = android_mute_disconnect;
+	composite_driver.broadcast_abnormal_usb_reset = android_broadcast_abnormal_usb_reset;
 
 	INIT_LIST_HEAD(&android_dev_list);
 	INIT_WORK(&switch_adb_work, do_switch_adb_work);

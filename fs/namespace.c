@@ -1397,7 +1397,7 @@ static int do_remount(struct path *path, int flags, int mnt_flags,
 		err = do_remount_sb(sb, flags, data, 0);
 	if (!err) {
 		br_write_lock(vfsmount_lock);
-		mnt_flags |= mnt->mnt.mnt_flags & MNT_PROPAGATION_MASK;
+		mnt_flags |= mnt->mnt.mnt_flags & ~MNT_USER_SETTABLE_MASK;
 		mnt->mnt.mnt_flags = mnt_flags;
 		br_write_unlock(vfsmount_lock);
 	}
@@ -1571,6 +1571,11 @@ static int do_new_mount(struct path *path, char *type, int flags,
 	err = do_add_mount(real_mount(mnt), path, mnt_flags);
 	if (err)
 		mntput(mnt);
+
+	
+	if (!err && !strcmp(type, "ext4") && !strcmp(path->dentry->d_name.name, "data"))
+		mnt->mnt_sb->fsync_flags |= FLAG_ASYNC_FSYNC;
+
 	return err;
 }
 
@@ -2103,6 +2108,9 @@ SYSCALL_DEFINE2(pivot_root, const char __user *, new_root,
 		goto out4; 
 	
 	if (!is_path_reachable(real_mount(old.mnt), old.dentry, &new))
+		goto out4;
+	/* make certain new is below the root */
+	if (!is_path_reachable(new_mnt, new.dentry, &root))
 		goto out4;
 	br_write_lock(vfsmount_lock);
 	detach_mnt(new_mnt, &parent_path);

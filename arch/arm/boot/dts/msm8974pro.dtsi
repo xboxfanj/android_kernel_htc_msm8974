@@ -27,6 +27,7 @@
 		compatible = "qcom,android-usb";
 		reg = <0xfe8050c8 0xc8>;
 		qcom,android-usb-swfi-latency = <1>;
+		qcom,android-usb-uicc-nluns = /bits/ 8 <1>;
 	};
 
 	qcom,msm-imem@fe805000 {
@@ -1701,7 +1702,7 @@
 
                qcom,gpu-pwrlevel@3 {
                        reg = <3>;
-                       qcom,gpu-freq = <320000000>;
+                       qcom,gpu-freq = <330000000>;
                        qcom,bus-freq = <5>;
                };
 
@@ -1720,6 +1721,7 @@
 };
 
 &mdss_mdp {
+	qcom,max-bandwidth-low-kbps = <2750000>;
 	qcom,vbif-settings = <0x0004 0x00000001>;
 
 	qcom,mdss-wb-off = <0x00011100 0x00011500
@@ -1730,6 +1732,7 @@
 	qcom,mdss-has-bwc;
 	qcom,mdss-has-decimation;
 	qcom,mdss-ad-off = <0x0013100 0x00013300>;
+	vdd-cx-supply = <&pm8841_s2_corner>;
 };
 
 &mdss_hdmi_tx {
@@ -1743,7 +1746,7 @@
 	qcom,vidc-ns-map = <0x40000000 0x40000000>;
 	qcom,load-freq-tbl = <1036800 465000000>,
 		<783360 465000000>,
-		<489600 266670000>,
+		<360000 266670000>,
 		<244800 133330000>;
 	qcom,reg-presets = <0x80004 0x1>,
 		<0x80070 0x11FFF>,
@@ -1821,4 +1824,11 @@
 
 &gdsc_venus {
 	qcom,skip-logic-collapse;
+};
+
+&sdhc_1 {
+	reg = <0xf9824900 0x1a0>, <0xf9824000 0x800>;
+
+	qcom,clk-rates = <400000 20000000 25000000 50000000 100000000 200000000>;
+	qcom,bus-speed-mode = "HS200_1p8v", "DDR_1p8v";
 };

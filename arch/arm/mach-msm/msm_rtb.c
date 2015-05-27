@@ -35,6 +35,15 @@
 
 #define RTB_COMPAT_STR	"qcom,msm-rtb"
 
+/* Write
+ * 1) 3 bytes sentinel
+ * 2) 1 bytes of log type
+ * 3) 4 bytes of where the caller came from
+ * 4) 4 bytes index
+ * 4) 4 bytes extra data from the caller
+ *
+ * Total = 16 bytes.
+ */
 struct msm_rtb_layout {
 	unsigned char sentinel[3];
 	unsigned char log_type;
@@ -62,81 +71,12 @@ static atomic_t msm_rtb_idx;
 #endif
 
 struct msm_rtb_state msm_rtb = {
-#if defined(CONFIG_HTC_DEBUG_RTB)
-	
-	.filter = (1 << LOGK_READL)|(1 << LOGK_WRITEL)|(1 << LOGK_LOGBUF)
-		|(1 << LOGK_HOTPLUG)|(1 << LOGK_CTXID)|(1 << LOGK_IRQ)|(1 << LOGK_DIE)|(1 << LOGK_DEBUG_SCM),
-#else
 	.filter = 1 << LOGK_LOGBUF,
-#endif
 	.enabled = 1,
 };
 
 module_param_named(filter, msm_rtb.filter, uint, 0644);
 module_param_named(enable, msm_rtb.enabled, int, 0644);
-
-#if defined(CONFIG_HTC_DEBUG_RTB)
-
-#define HTC_DEBUG_RTB_MAGIC 0x5254424D 
-
-struct htc_debug_rtb {
-	unsigned int magic;
-	unsigned int phys;
-	unsigned int cpu_idx[];
-};
-
-static int htc_debug_rtb_save(struct platform_device *pdev)
-{
-	struct resource *res = NULL;
-	phys_addr_t phys;
-	resource_size_t size;
-	struct htc_debug_rtb *rtb = NULL;
-	unsigned int cpu;
-
-	if (!pdev->dev.of_node) {
-		pr_err("%s: of_node not found\n", __func__);
-		return -EINVAL;
-	}
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-			"htc_debug_rtb_res");
-	if (!res) {
-		pr_err("%s: 'htc_debug_rtb_res' not found\n", __func__);
-		return -EINVAL;
-	}
-	size = resource_size(res);
-	if (!size) {
-		pr_err("%s: invalid size\n", __func__);
-		return -EINVAL;
-	}
-	phys = res->start;
-
-	rtb = ioremap(phys, size);
-	if (!rtb) {
-		pr_err("%s: ioremap(0x%x, 0x%x) failed\n", __func__, phys, size);
-		return -ENOMEM;
-	}
-
-	pr_info("htc_debug_rtb: phys: 0x%x, size: 0x%x\n", phys, size);
-
-	rtb->magic = (unsigned int) HTC_DEBUG_RTB_MAGIC;
-	rtb->phys = (unsigned int) virt_to_phys(&msm_rtb);
-	for (cpu = 0; cpu < msm_rtb.step_size; ++cpu)
-		rtb->cpu_idx[cpu] = (unsigned int) virt_to_phys(&per_cpu(msm_rtb_idx_cpu, cpu));
-	mb();
-
-	iounmap(rtb);
-
-	return 0;
-}
-
-void msm_rtb_disable(void)
-{
-	msm_rtb.enabled = 0;
-	return;
-}
-EXPORT_SYMBOL(msm_rtb_disable);
-
-#endif 
 
 static int msm_rtb_panic_notifier(struct notifier_block *this,
 					unsigned long event, void *ptr)
@@ -220,6 +160,10 @@ static int msm_rtb_get_idx(void)
 	int cpu, i, offset;
 	atomic_t *index;
 
+	/*
+	 * ideally we would use get_cpu but this is a close enough
+	 * approximation for our purposes.
+	 */
 	cpu = raw_smp_processor_id();
 
 	index = &per_cpu(msm_rtb_idx_cpu, cpu);
@@ -227,7 +171,7 @@ static int msm_rtb_get_idx(void)
 	i = atomic_add_return(msm_rtb.step_size, index);
 	i -= msm_rtb.step_size;
 
-	
+	/* Check if index has wrapped around */
 	offset = (i & (msm_rtb.nentries - 1)) -
 		 ((i - msm_rtb.step_size) & (msm_rtb.nentries - 1));
 	if (offset < 0) {
@@ -246,7 +190,7 @@ static int msm_rtb_get_idx(void)
 	i = atomic_inc_return(&msm_rtb_idx);
 	i--;
 
-	
+	/* Check if index has wrapped around */
 	offset = (i & (msm_rtb.nentries - 1)) -
 		 ((i - 1) & (msm_rtb.nentries - 1));
 	if (offset < 0) {
@@ -318,6 +262,11 @@ int msm_rtb_probe(struct platform_device *pdev)
 	if (msm_rtb.size <= 0 || msm_rtb.size > SZ_1M)
 		return -EINVAL;
 
+	/*
+	 * The ioremap call is made separately to store the physical
+	 * address of the buffer. This is necessary for cases where
+	 * the only way to access the buffer is a physical address.
+	 */
 	if (res) {
 		msm_rtb.phys = res->start;
 	} else {
@@ -339,7 +288,7 @@ int msm_rtb_probe(struct platform_device *pdev)
 
 	msm_rtb.nentries = msm_rtb.size / sizeof(struct msm_rtb_layout);
 
-	
+	/* Round this down to a power of 2 */
 	msm_rtb.nentries = __rounddown_pow_of_two(msm_rtb.nentries);
 
 	memset(msm_rtb.rtb, 0, msm_rtb.size);
@@ -359,10 +308,6 @@ int msm_rtb_probe(struct platform_device *pdev)
 	atomic_notifier_chain_register(&panic_notifier_list,
 						&msm_rtb_panic_blk);
 	msm_rtb.initialized = 1;
-
-#if defined(CONFIG_HTC_DEBUG_RTB)
-	htc_debug_rtb_save(pdev);
-#endif
 
 	return 0;
 }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -50,6 +50,11 @@
 #define STATIC_REGULATOR (!ONDEMAND_REGULATOR)
 
 #define NUM_WCD9XXX_REG_RET	8
+
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
 
 struct wcd9xxx_i2c {
 	struct i2c_client *client;
@@ -557,7 +562,6 @@ static const struct intr_data intr_tbl_v2[] = {
 	{WCD9XXX_IRQ_EAR_PA_OCPL_FAULT, false},
 	{WCD9XXX_IRQ_HPH_L_PA_STARTUP, false},
 	{WCD9XXX_IRQ_HPH_R_PA_STARTUP, false},
-	{WCD9320_IRQ_EAR_PA_STARTUP, false},
 	{WCD9XXX_IRQ_RESERVED_0, false},
 	{WCD9XXX_IRQ_RESERVED_1, false},
 	{WCD9XXX_IRQ_MAD_AUDIO, false},
@@ -607,7 +611,7 @@ static int wcd9xxx_device_init(struct wcd9xxx *wcd9xxx)
 				wcd9xxx->codec_type->num_irqs,
 				wcd9xxx_num_irq_regs(wcd9xxx),
 				wcd9xxx_reg_read, wcd9xxx_reg_write,
-				wcd9xxx_bulk_read);
+				wcd9xxx_bulk_read, wcd9xxx_bulk_write);
 
 	if (wcd9xxx_core_irq_init(&wcd9xxx->core_res))
 		goto err;
@@ -1509,7 +1513,7 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 	int intf_type;
 
 	intf_type = wcd9xxx_get_intf_type();
-
+	pr_info("%s ++\n",__func__);
 	if (intf_type == WCD9XXX_INTERFACE_TYPE_I2C) {
 		dev_dbg(&slim->dev, "%s:Codec is detected in I2C mode\n",
 			__func__);
@@ -1556,7 +1560,7 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 	wcd9xxx->dev = &slim->dev;
 	wcd9xxx->mclk_rate = pdata->mclk_rate;
 	wcd9xxx->slim_device_bootup = true;
-
+	pr_info("%s init\n",__func__);
 	ret = wcd9xxx_init_supplies(wcd9xxx, pdata);
 	if (ret) {
 		pr_err("%s: Fail to init Codec supplies %d\n", __func__, ret);
@@ -1630,7 +1634,7 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 		(void *) "poke", &codec_debug_ops);
 	}
 #endif
-
+	pr_info("%s --\n",__func__);
 	return ret;
 
 err_slim_add:
@@ -1666,15 +1670,14 @@ static int wcd9xxx_device_up(struct wcd9xxx *wcd9xxx)
 {
 	int ret = 0;
 	struct wcd9xxx_core_resource *wcd9xxx_res = &wcd9xxx->core_res;
-
+	pr_info("%s ++\n",__func__);
 	if (wcd9xxx->slim_device_bootup) {
 		wcd9xxx->slim_device_bootup = false;
+		pr_info("%s 2--\n",__func__);
 		return 0;
 	}
-	ret = wcd9xxx_reset(wcd9xxx);
-	if (ret)
-		pr_err("%s: Resetting Codec failed\n", __func__);
 
+	dev_info(wcd9xxx->dev, "%s: codec bring up\n", __func__);
 	wcd9xxx_bring_up(wcd9xxx);
 	ret = wcd9xxx_irq_init(wcd9xxx_res);
 	if (ret) {
@@ -1683,6 +1686,26 @@ static int wcd9xxx_device_up(struct wcd9xxx *wcd9xxx)
 		if (wcd9xxx->post_reset)
 			ret = wcd9xxx->post_reset(wcd9xxx);
 	}
+	pr_info("%s --\n",__func__);
+	return ret;
+}
+
+static int wcd9xxx_slim_device_reset(struct slim_device *sldev)
+{
+	int ret;
+	struct wcd9xxx *wcd9xxx = slim_get_devicedata(sldev);
+	if (!wcd9xxx) {
+		pr_err("%s: wcd9xxx is NULL\n", __func__);
+		return -EINVAL;
+	}
+
+	dev_info(wcd9xxx->dev, "%s: device reset\n", __func__);
+	if (wcd9xxx->slim_device_bootup)
+		return 0;
+	ret = wcd9xxx_reset(wcd9xxx);
+	if (ret)
+		dev_err(wcd9xxx->dev, "%s: Resetting Codec failed\n", __func__);
+
 	return ret;
 }
 
@@ -1693,7 +1716,7 @@ static int wcd9xxx_slim_device_up(struct slim_device *sldev)
 		pr_err("%s: wcd9xxx is NULL\n", __func__);
 		return -EINVAL;
 	}
-	dev_dbg(wcd9xxx->dev, "%s: device up\n", __func__);
+	dev_info(wcd9xxx->dev, "%s: slim device up\n", __func__);
 	return wcd9xxx_device_up(wcd9xxx);
 }
 
@@ -1705,10 +1728,14 @@ static int wcd9xxx_slim_device_down(struct slim_device *sldev)
 		pr_err("%s: wcd9xxx is NULL\n", __func__);
 		return -EINVAL;
 	}
+
+	dev_info(wcd9xxx->dev, "%s: device down\n", __func__);
+	pr_info("%s ++\n",__func__);
 	wcd9xxx_irq_exit(&wcd9xxx->core_res);
 	if (wcd9xxx->dev_down)
 		wcd9xxx->dev_down(wcd9xxx);
 	dev_dbg(wcd9xxx->dev, "%s: device down\n", __func__);
+	pr_info("%s --\n",__func__);
 	return 0;
 }
 
@@ -1824,6 +1851,7 @@ static struct slim_driver taiko_slim_driver = {
 	.resume = wcd9xxx_slim_resume,
 	.suspend = wcd9xxx_slim_suspend,
 	.device_up = wcd9xxx_slim_device_up,
+	.reset_device = wcd9xxx_slim_device_reset,
 	.device_down = wcd9xxx_slim_device_down,
 };
 
@@ -1843,6 +1871,7 @@ static struct slim_driver tapan_slim_driver = {
 	.resume = wcd9xxx_slim_resume,
 	.suspend = wcd9xxx_slim_suspend,
 	.device_up = wcd9xxx_slim_device_up,
+	.reset_device = wcd9xxx_slim_device_reset,
 	.device_down = wcd9xxx_slim_device_down,
 };
 

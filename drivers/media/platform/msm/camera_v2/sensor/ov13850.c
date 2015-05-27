@@ -312,7 +312,6 @@ static int ov13850_read_fuseid(struct sensorb_cfg_data *cdata,
 		}
 		pr_info("%s: OTP valid layer = %d\n", __func__,  valid_layer);
 
-		ov13850_s_ctrl.driver_ic = otp[3];
 
 		rc = s_ctrl->sensor_i2c_client->i2c_func_tbl->i2c_write(s_ctrl->sensor_i2c_client, 0x0100, 0x00, MSM_CAMERA_I2C_BYTE_DATA);
 		if (rc < 0)
@@ -370,28 +369,12 @@ static int ov13850_read_fuseid(struct sensorb_cfg_data *cdata,
 	return rc;
 }
 
-int32_t ov13850_sensor_match_id(struct msm_sensor_ctrl_t *s_ctrl)
-{
-	int32_t rc = 0;
-	int32_t rc1 = 0;
-	static int first = 0;
-	rc = msm_sensor_match_id(s_ctrl);
-	if(rc == 0) {
-		if(first == 0) {
-			pr_info("%s read_fuseid\n",__func__);
-			rc1 = ov13850_read_fuseid(NULL, s_ctrl);
-		}
-	}
-	first = 1;
-	return rc;
-}
-
 static struct msm_sensor_fn_t ov13850_sensor_func_tbl = {
 	.sensor_config = msm_sensor_config,
 	.sensor_power_up = msm_sensor_power_up,
 	.sensor_power_down = msm_sensor_power_down,
     
-	.sensor_match_id = ov13850_sensor_match_id,
+	.sensor_match_id = msm_sensor_match_id,
 	
 	.sensor_i2c_read_fuseid = ov13850_read_fuseid,
 };

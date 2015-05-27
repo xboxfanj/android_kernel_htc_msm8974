@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -32,6 +32,7 @@
 #include <linux/power_supply.h>
 #include <linux/regulator/consumer.h>
 #include <linux/workqueue.h>
+#include <linux/mutex.h>
 #include <asm/hardware/gic.h>
 #include <asm/arch_timer.h>
 #include <mach/gpio.h>
@@ -153,12 +154,18 @@ static inline void msm_mpm_send_interrupt(void)
 {
 	__raw_writel(msm_mpm_dev_data.mpm_apps_ipc_val,
 			msm_mpm_dev_data.mpm_apps_ipc_reg);
-	
+	/* Ensure the write is complete before returning. */
 	wmb();
 }
 
 static irqreturn_t msm_mpm_irq(int irq, void *dev_id)
 {
+	/*
+	 * When the system resumes from deep sleep mode, the RPM hardware wakes
+	 * up the Apps processor by triggering this interrupt. This interrupt
+	 * has to be enabled and set as wake for the irq to get SPM out of
+	 * sleep. Handle the interrupt here to make sure that it gets cleared.
+	 */
 	return IRQ_HANDLED;
 }
 
@@ -192,6 +199,10 @@ static void msm_mpm_set(cycle_t wakeup, bool wakeset)
 		msm_mpm_write(reg, i, 0);
 	}
 
+	/*
+	 * Ensure that the set operation is complete before sending the
+	 * interrupt
+	 */
 	wmb();
 	msm_mpm_send_interrupt();
 }
@@ -209,6 +220,10 @@ static inline uint16_t msm_mpm_get_irq_a2m(struct irq_data *d)
 	hlist_for_each_entry(node, elem, &irq_hash[hashfn(d->hwirq)], node) {
 		if ((node->hwirq == d->hwirq)
 				&& (d->domain == node->domain)) {
+			/*
+			 * Update the linux irq mapping. No update required for
+			 * bypass interrupts
+			 */
 			if (node->pin != 0xff)
 				msm_mpm_irqs_m2a[node->pin] = d->irq;
 			break;
@@ -370,6 +385,9 @@ static int msm_mpm_set_irq_type(struct irq_data *d, unsigned int flow_type)
 	return rc;
 }
 
+/******************************************************************************
+ * Public functions
+ *****************************************************************************/
 int msm_mpm_enable_pin(unsigned int pin, unsigned int enable)
 {
 	uint32_t index = MSM_MPM_IRQ_INDEX(pin);
@@ -513,6 +531,7 @@ void msm_mpm_enter_sleep(uint32_t sclk_count, bool from_idle,
 void msm_mpm_exit_sleep(bool from_idle)
 {
 	unsigned long pending;
+	uint32_t *enabled_intr;
 	int i;
 	int k;
 
@@ -521,12 +540,16 @@ void msm_mpm_exit_sleep(bool from_idle)
 		return;
 	}
 
+	enabled_intr = from_idle ? msm_mpm_enabled_irq :
+						msm_mpm_wake_irq;
+
 	for (i = 0; i < MSM_MPM_REG_WIDTH; i++) {
 		pending = msm_mpm_read(MSM_MPM_REG_STATUS, i);
+		pending &= enabled_intr[i];
 
 		if (MSM_MPM_DEBUG_PENDING_IRQ & msm_mpm_debug_mask)
-			pr_info("%s: pending.%d: 0x%08lx", __func__,
-					i, pending);
+			pr_info("%s: enabled_intr pending.%d: 0x%08x 0x%08lx\n",
+				__func__, i, enabled_intr[i], pending);
 
 		k = find_first_bit(&pending, 32);
 		while (k < 32) {
@@ -550,6 +573,9 @@ void msm_mpm_exit_sleep(bool from_idle)
 }
 static void msm_mpm_sys_low_power_modes(bool allow)
 {
+	static DEFINE_MUTEX(enable_xo_mutex);
+
+	mutex_lock(&enable_xo_mutex);
 	if (allow) {
 		if (xo_enabled) {
 			clk_disable_unprepare(xo_clk);
@@ -557,10 +583,15 @@ static void msm_mpm_sys_low_power_modes(bool allow)
 		}
 	} else {
 		if (!xo_enabled) {
+			/* If we cannot enable XO clock then we want to flag it,
+			 * than having to deal with not being able to wakeup
+			 * from a non-monitorable interrupt
+			 */
 			BUG_ON(clk_prepare_enable(xo_clk));
 			xo_enabled = true;
 		}
 	}
+	mutex_unlock(&enable_xo_mutex);
 }
 
 void msm_mpm_suspend_prepare(void)
@@ -652,7 +683,8 @@ static int __devinit msm_mpm_dev_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 	ret = devm_request_irq(&pdev->dev, dev->mpm_ipc_irq, msm_mpm_irq,
-			IRQF_TRIGGER_RISING, pdev->name, msm_mpm_irq);
+			IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND, pdev->name,
+			msm_mpm_irq);
 
 	if (ret) {
 		pr_info("%s(): request_irq failed errno: %d\n", __func__, ret);
@@ -677,6 +709,10 @@ static int __devinit msm_mpm_dev_probe(struct platform_device *pdev)
 	else  {
 		pr_warn("%s(): Failed to create wq. So voting against XO off",
 				__func__);
+		/* Throw a BUG. Otherwise, its possible that system allows
+		 * XO shutdown when there are non-monitored interrupts are
+		 * pending and cause errors at a later point in time.
+		 */
 		BUG_ON(clk_prepare_enable(xo_clk));
 		xo_enabled = true;
 	}
@@ -783,8 +819,16 @@ void __init of_mpm_init(struct device_node *node)
 			continue;
 		}
 
+		/*
+		 * Size is in bytes. Convert to size of uint32_t
+		 */
 		size /= sizeof(*list);
 
+		/*
+		 * The data is represented by a tuple mapping hwirq to a MPM
+		 * pin. The number of mappings in the device tree would be
+		 * size/2
+		 */
 		mpm_node = kzalloc(sizeof(struct mpm_irqs_a2m) * size / 2,
 				GFP_KERNEL);
 		if (!mpm_node)

@@ -80,11 +80,7 @@ source "drivers/staging/sep/Kconfig"
 
 source "drivers/staging/iio/Kconfig"
 
-source "drivers/staging/zram/Kconfig"
-
 source "drivers/staging/zcache/Kconfig"
-
-source "drivers/staging/zsmalloc/Kconfig"
 
 source "drivers/staging/wlags49_h2/Kconfig"
 
@@ -132,5 +128,8 @@ source "drivers/staging/ramster/Kconfig"
 
 source "drivers/staging/ozwpan/Kconfig"
 
+source "drivers/staging/htc_smem/Kconfig"
+
 source "drivers/staging/prima/Kconfig"
+
 endif # STAGING

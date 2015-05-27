@@ -16,15 +16,12 @@
 
 #ifdef CONFIG_CPU_V7
 void msm_pm_boot_entry(void);
-#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
-void get_pm_boot_vector_symbol_address(unsigned *addr);
-#endif
 extern unsigned long msm_pm_pc_pgd;
 extern unsigned long msm_pm_boot_vector[NR_CPUS];
 #else
 static inline void msm_pm_boot_entry(void)
 {
-	
+	/* empty */
 }
 #endif
 #endif

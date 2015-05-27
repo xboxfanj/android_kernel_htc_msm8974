@@ -100,8 +100,10 @@ static int snd_hwdep_open(struct inode *inode, struct file * file)
 	if (hw == NULL)
 		return -ENODEV;
 
-	if (!try_module_get(hw->card->module))
+	if (!try_module_get(hw->card->module)) {
+		snd_card_unref(hw->card);
 		return -EFAULT;
+	}
 
 	init_waitqueue_entry(&wait, current);
 	add_wait_queue(&hw->open_wait, &wait);
@@ -129,6 +131,10 @@ static int snd_hwdep_open(struct inode *inode, struct file * file)
 		mutex_unlock(&hw->open_mutex);
 		schedule();
 		mutex_lock(&hw->open_mutex);
+		if (hw->card->shutdown) {
+			err = -ENODEV;
+			break;
+		}
 		if (signal_pending(current)) {
 			err = -ERESTARTSYS;
 			break;
@@ -148,6 +154,7 @@ static int snd_hwdep_open(struct inode *inode, struct file * file)
 	mutex_unlock(&hw->open_mutex);
 	if (err < 0)
 		module_put(hw->card->module);
+	snd_card_unref(hw->card);
 	return err;
 }
 
@@ -221,7 +228,7 @@ static int snd_hwdep_dsp_load(struct snd_hwdep *hw,
 	memset(&info, 0, sizeof(info));
 	if (copy_from_user(&info, _info, sizeof(info)))
 		return -EFAULT;
-	
+	/* check whether the dsp was already loaded */
 	if (hw->dsp_loaded & (1 << info.index))
 		return -EBUSY;
 	if (!access_ok(VERIFY_READ, info.image, info.length))
@@ -320,6 +327,9 @@ static int snd_hwdep_control_ioctl(struct snd_card *card,
 #define snd_hwdep_ioctl_compat	NULL
 #endif
 
+/*
+
+ */
 
 static const struct file_operations snd_hwdep_f_ops =
 {
@@ -335,6 +345,19 @@ static const struct file_operations snd_hwdep_f_ops =
 	.mmap =		snd_hwdep_mmap,
 };
 
+/**
+ * snd_hwdep_new - create a new hwdep instance
+ * @card: the card instance
+ * @id: the id string
+ * @device: the device index (zero-based)
+ * @rhwdep: the pointer to store the new hwdep instance
+ *
+ * Creates a new hwdep instance with the given index on the card.
+ * The callbacks (hwdep->ops) must be set on the returned instance
+ * after this call manually by the caller.
+ *
+ * Returns zero if successful, or a negative error code on failure.
+ */
 int snd_hwdep_new(struct snd_card *card, char *id, int device,
 		  struct snd_hwdep **rhwdep)
 {
@@ -443,17 +466,23 @@ static int snd_hwdep_dev_disconnect(struct snd_device *device)
 		mutex_unlock(&register_mutex);
 		return -EINVAL;
 	}
+	mutex_lock(&hwdep->open_mutex);
+	wake_up(&hwdep->open_wait);
 #ifdef CONFIG_SND_OSSEMUL
 	if (hwdep->ossreg)
 		snd_unregister_oss_device(hwdep->oss_type, hwdep->card, hwdep->device);
 #endif
 	snd_unregister_device(SNDRV_DEVICE_TYPE_HWDEP, hwdep->card, hwdep->device);
 	list_del_init(&hwdep->list);
+	mutex_unlock(&hwdep->open_mutex);
 	mutex_unlock(&register_mutex);
 	return 0;
 }
 
 #ifdef CONFIG_PROC_FS
+/*
+ *  Info interface
+ */
 
 static void snd_hwdep_proc_read(struct snd_info_entry *entry,
 				struct snd_info_buffer *buffer)
@@ -487,12 +516,15 @@ static void __exit snd_hwdep_proc_done(void)
 {
 	snd_info_free_entry(snd_hwdep_proc_entry);
 }
-#else 
+#else /* !CONFIG_PROC_FS */
 #define snd_hwdep_proc_init()
 #define snd_hwdep_proc_done()
-#endif 
+#endif /* CONFIG_PROC_FS */
 
 
+/*
+ *  ENTRY functions
+ */
 
 static int __init alsa_hwdep_init(void)
 {

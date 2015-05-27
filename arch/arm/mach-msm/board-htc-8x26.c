@@ -71,10 +71,6 @@
 #include <linux/qpnp/qpnp-bms.h>
 #endif
 
-#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
-#include <mach/htc_mnemosyne.h>
-#endif
-
 #ifdef CONFIG_BT
 #include <mach/htc_bdaddress.h>
 #endif
@@ -509,7 +505,9 @@ static struct htc_battery_platform_data htc_battery_pdev_data = {
 	.icharger.set_pwrsrc_and_charger_enable =
 						pm8941_set_pwrsrc_and_charger_enable,
 	.icharger.set_limit_charge_enable = pm8941_limit_charge_enable,
+	.icharger.set_limit_input_current = pm8941_limit_input_current,
 	.icharger.set_chg_iusbmax = pm8941_set_chg_iusbmax,
+	.icharger.set_chg_curr_settled = pm8941_set_chg_curr_settled,
 	.icharger.set_chg_vin_min = pm8941_set_chg_vin_min,
 	.icharger.is_ovp = pm8941_is_charger_ovp,
 	.icharger.is_batt_temp_fault_disable_chg =
@@ -523,19 +521,26 @@ static struct htc_battery_platform_data htc_battery_pdev_data = {
 	.icharger.is_battery_full_eoc_stop = pm8941_is_batt_full_eoc_stop,
 	.icharger.get_charge_type = pm8941_get_charge_type,
 	.icharger.get_chg_usb_iusbmax = pm8941_get_chg_usb_iusbmax,
+	.icharger.get_chg_curr_settled = pm8941_get_chg_curr_settled,
 	.icharger.get_chg_vinmin = pm8941_get_chg_vinmin,
 	.icharger.get_input_voltage_regulation =
 						pm8941_get_input_voltage_regulation,
+	.icharger.store_battery_charger_data = pm8941_store_battery_charger_data_emmc,
+	.icharger.set_ftm_charge_enable_type = pm8941_set_ftm_charge_enable_type,
 
 	.igauge.name = "pm8x26",
 	.igauge.get_battery_voltage = pm8941_get_batt_voltage,
 	.igauge.get_battery_current = pm8941_bms_get_batt_current,
 	.igauge.get_battery_temperature = pm8941_get_batt_temperature,
 	.igauge.get_battery_id = pm8941_get_batt_id,
+	.igauge.get_battery_id_mv = pm8941_get_batt_id_mv,
 	.igauge.get_battery_soc = pm8941_bms_get_batt_soc,
 	.igauge.get_battery_cc = pm8941_bms_get_batt_cc,
-	.igauge.store_battery_data = pm8941_bms_store_battery_data_emmc,
+	.igauge.store_battery_gauge_data = pm8941_bms_store_battery_gauge_data_emmc,
 	.igauge.store_battery_ui_soc = pm8941_bms_store_battery_ui_soc,
+	.igauge.enter_qb_mode = pm8941_bms_enter_qb_mode,
+	.igauge.exit_qb_mode = pm8941_bms_exit_qb_mode,
+	.igauge.qb_mode_pwr_consumption_check = pm8941_qb_mode_pwr_consumption_check,
 	.igauge.get_battery_ui_soc = pm8941_bms_get_battery_ui_soc,
 	.igauge.is_battery_temp_fault = pm8941_is_batt_temperature_fault,
 	.igauge.is_battery_full = pm8941_is_batt_full,
@@ -606,9 +611,6 @@ void __init htc_8226_init_early(void)
 {
         persistent_ram_early_init(&htc_8226_persistent_ram);
 
-#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
-        mnemosyne_early_init((unsigned int)HTC_DEBUG_FOOTPRINT_PHYS, (unsigned int)HTC_DEBUG_FOOTPRINT_BASE);
-#endif
 }
 
 void __init htc_8226_init(void)
@@ -633,9 +635,6 @@ void __init htc_8226_init(void)
 	platform_device_register(&android_pmem_ediag1_device);
 	platform_device_register(&android_pmem_ediag2_device);
 	platform_device_register(&android_pmem_ediag3_device);
-#endif
-#ifdef CONFIG_PERFLOCK
-	platform_device_register(&msm8226_device_perf_lock);
 #endif
 #ifdef CONFIG_HTC_POWER_DEBUG
 	htc_monitor_init();

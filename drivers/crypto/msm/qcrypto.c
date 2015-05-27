@@ -1,6 +1,6 @@
 /* Qualcomm Crypto driver
  *
- * Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2010-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -68,6 +68,7 @@ enum qcrypto_bus_state {
 	BUS_BANDWIDTH_RELEASING,
 	BUS_BANDWIDTH_ALLOCATING,
 	BUS_SUSPENDED,
+	BUS_SUSPENDING,
 };
 
 struct crypto_stat {
@@ -514,7 +515,8 @@ static void qcrypto_bw_set_timeout(struct crypto_engine *pengine)
 			(unsigned long)(pengine);
 	pengine->bw_reaper_timer.expires = jiffies +
 			msecs_to_jiffies(QCRYPTO_HIGH_BANDWIDTH_TIMEOUT);
-	add_timer(&(pengine->bw_reaper_timer));
+	mod_timer(&(pengine->bw_reaper_timer),
+		pengine->bw_reaper_timer.expires);
 }
 
 static void qcrypto_ce_bw_allocate_req(struct crypto_engine *pengine)
@@ -537,7 +539,7 @@ static void qcrypto_bw_allocate_work(struct work_struct *work)
 	spin_unlock_irqrestore(&cp->lock, flags);
 
 	qcrypto_ce_set_bus(pengine, true);
-
+	qcrypto_bw_set_timeout(pengine);
 	spin_lock_irqsave(&cp->lock, flags);
 	pengine->bw_state = BUS_HAS_BANDWIDTH;
 	pengine->high_bw_req = false;
@@ -564,7 +566,7 @@ static void qcrypto_bw_reaper_work(struct work_struct *work)
 		/* check if engine is stuck */
 		if (pengine->req) {
 			if (pengine->check_flag)
-				dev_err(&pengine->pdev->dev,
+				dev_warn(&pengine->pdev->dev,
 				"The engine appears to be stuck seq %d req %p.\n",
 				active_seq, pengine->req);
 			pengine->check_flag = false;
@@ -598,7 +600,8 @@ ret:
 	spin_unlock_irqrestore(&cp->lock, flags);
 	if (restart)
 		_start_qcrypto_process(cp, pengine);
-	qcrypto_bw_set_timeout(pengine);
+	if (pengine->bw_state != BUS_NO_BANDWIDTH)
+		qcrypto_bw_set_timeout(pengine);
 }
 
 static int qcrypto_count_sg(struct scatterlist *sg, int nbytes)
@@ -961,6 +964,7 @@ static void _qcrypto_remove_engine(struct crypto_engine *pengine)
 	cancel_work_sync(&pengine->bw_reaper_ws);
 	cancel_work_sync(&pengine->bw_allocate_ws);
 	del_timer_sync(&pengine->bw_reaper_timer);
+	device_init_wakeup(&pengine->pdev->dev, false);
 
 	if (pengine->bus_scale_handle != 0)
 		msm_bus_scale_unregister_client(pengine->bus_scale_handle);
@@ -1692,12 +1696,12 @@ static int _qcrypto_process_aead(struct  crypto_engine *pengine,
 			rctx->orig_src = req->src;
 			rctx->orig_dst = req->dst;
 
-			if ((MAX_ALIGN_SIZE*2 > ULONG_MAX - req->assoclen) ||
-				((MAX_ALIGN_SIZE*2 + req->assoclen) >
-						ULONG_MAX - qreq.authsize) ||
-				((MAX_ALIGN_SIZE*2 + req->assoclen +
+			if ((MAX_ALIGN_SIZE*2 > UINT_MAX - qreq.assoclen) ||
+				((MAX_ALIGN_SIZE*2 + qreq.assoclen) >
+						UINT_MAX - qreq.authsize) ||
+				((MAX_ALIGN_SIZE*2 + qreq.assoclen +
 						qreq.authsize) >
-						ULONG_MAX - req->cryptlen)) {
+						UINT_MAX - req->cryptlen)) {
 				pr_err("Integer overflow on aead req length.\n");
 				return -EINVAL;
 			}
@@ -1884,6 +1888,12 @@ again:
 
 	backlog_eng = crypto_get_backlog(&pengine->req_queue);
 
+	/* make sure it is in high bandwidth state */
+	if (pengine->bw_state != BUS_HAS_BANDWIDTH) {
+		spin_unlock_irqrestore(&cp->lock, flags);
+		return 0;
+	}
+
 	/* try to get request from request queue of the engine first */
 	async_req = crypto_dequeue_request(&pengine->req_queue);
 	if (!async_req) {
@@ -2035,6 +2045,7 @@ static int _qcrypto_queue_req(struct crypto_priv *cp,
 			pengine = NULL;
 			break;
 		case BUS_SUSPENDED:
+		case BUS_SUSPENDING:
 		default:
 			pengine = NULL;
 			break;
@@ -4303,7 +4314,7 @@ static int  _qcrypto_probe(struct platform_device *pdev)
 	pengine->active_seq = 0;
 	pengine->last_active_seq = 0;
 	pengine->check_flag = false;
-	qcrypto_bw_set_timeout(pengine);
+	device_init_wakeup(&pengine->pdev->dev, true);
 
 	tasklet_init(&pengine->done_tasklet, req_done, (unsigned long)pengine);
 	crypto_init_queue(&pengine->req_queue, MSM_QCRYPTO_REQ_QUEUE_LENGTH);
@@ -4656,6 +4667,25 @@ err:
 	return rc;
 };
 
+static int _qcrypto_engine_in_use(struct crypto_engine *pengine)
+{
+	struct crypto_priv *cp = pengine->pcp;
+
+	if (pengine->req || pengine->req_queue.qlen || cp->req_queue.qlen)
+		return 1;
+	return 0;
+}
+
+static void _qcrypto_do_suspending(struct crypto_engine *pengine)
+{
+	struct crypto_priv *cp = pengine->pcp;
+
+	if (cp->platform_support.bus_scale_table == NULL)
+		return;
+	del_timer_sync(&pengine->bw_reaper_timer);
+	qcrypto_ce_set_bus(pengine, false);
+}
+
 static int  _qcrypto_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	int ret = 0;
@@ -4683,9 +4713,20 @@ static int  _qcrypto_suspend(struct platform_device *pdev, pm_message_t state)
 			ret = -EBUSY;
 		break;
 	case BUS_HAS_BANDWIDTH:
+		if (_qcrypto_engine_in_use(pengine)) {
+			ret = -EBUSY;
+		} else {
+			pengine->bw_state = BUS_SUSPENDING;
+			spin_unlock_irqrestore(&cp->lock, flags);
+			_qcrypto_do_suspending(pengine);
+			spin_lock_irqsave(&cp->lock, flags);
+			pengine->bw_state = BUS_SUSPENDED;
+		}
+		break;
 	case BUS_BANDWIDTH_RELEASING:
 	case BUS_BANDWIDTH_ALLOCATING:
 	case BUS_SUSPENDED:
+	case BUS_SUSPENDING:
 	default:
 			ret = -EBUSY;
 			break;
@@ -4706,39 +4747,36 @@ static int  _qcrypto_resume(struct platform_device *pdev)
 	struct crypto_engine *pengine;
 	struct crypto_priv *cp;
 	unsigned long flags;
-	bool restart = false;
+	int ret = 0;
 
 	pengine = platform_get_drvdata(pdev);
 
 	if (!pengine)
 		return -EINVAL;
-
 	cp = pengine->pcp;
 	if (!cp->ce_support.clk_mgmt_sus_res)
 		return 0;
-
 	spin_lock_irqsave(&cp->lock, flags);
 	if (pengine->bw_state == BUS_SUSPENDED) {
-		pengine->bw_state = BUS_BANDWIDTH_ALLOCATING;
 		spin_unlock_irqrestore(&cp->lock, flags);
-
 		if (qce_pm_table.resume)
 			qce_pm_table.resume(pengine->qce);
 
-		qcrypto_ce_set_bus(pengine, true);
-
 		spin_lock_irqsave(&cp->lock, flags);
-		pengine->bw_state = BUS_HAS_BANDWIDTH;
-		pengine->high_bw_req = false;
-		restart = true;
+		pengine->bw_state = BUS_NO_BANDWIDTH;
 		pengine->active_seq++;
-		pengine->check_flag = true;
-	}
-	spin_unlock_irqrestore(&cp->lock, flags);
-	if (restart)
-		_start_qcrypto_process(cp, pengine);
+		pengine->check_flag = false;
+		if (cp->req_queue.qlen || pengine->req_queue.qlen) {
+			if (pengine->high_bw_req == false) {
+				qcrypto_ce_bw_allocate_req(pengine);
+				pengine->high_bw_req = true;
+			}
+		}
+	} else
+		ret = -EBUSY;
 
-	return 0;
+	spin_unlock_irqrestore(&cp->lock, flags);
+	return ret;
 }
 
 static struct of_device_id qcrypto_match[] = {

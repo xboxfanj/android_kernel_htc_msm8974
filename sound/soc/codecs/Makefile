@@ -51,8 +51,8 @@ snd-soc-uda1380-objs := uda1380.o
 snd-soc-wcd9304-objs := wcd9304.o wcd9304-tables.o
 snd-soc-wcd9310-objs := wcd9310.o wcd9310-tables.o
 snd-soc-cs8427-objs := cs8427.o
-snd-soc-wcd9320-objs := wcd9xxx-resmgr.o wcd9320.o wcd9320-tables.o wcd9xxx-mbhc.o wcd9xxx-common.o
-snd-soc-wcd9306-objs := wcd9306.o wcd9306-tables.o wcd9xxx-common.o
+snd-soc-wcd9320-objs := wcd9xxx-resmgr.o wcd9320.o wcd9320-tables.o wcd9xxx-mbhc.o wcd9xxx-common.o wcdcal-hwdep.o
+snd-soc-wcd9306-objs := wcd9306.o wcd9306-tables.o wcd9xxx-common.o wcdcal-hwdep.o
 snd-soc-msm8x10-wcd-objs := msm8x10-wcd.o msm8x10-wcd-tables.o wcd9xxx-common.o
 snd-soc-wl1273-objs := wl1273.o
 snd-soc-wm1250-ev1-objs := wm1250-ev1.o
@@ -218,4 +218,3 @@ obj-$(CONFIG_SND_SOC_MSM_STUB)  += snd-soc-msm-stub.o
 # Amp
 obj-$(CONFIG_SND_SOC_MAX9877)	+= snd-soc-max9877.o
 obj-$(CONFIG_SND_SOC_TPA6130A2)	+= snd-soc-tpa6130a2.o
-obj-$(CONFIG_SOUND_CONTROL_HAX_3_GPL) += sound_control_3_gpl.o

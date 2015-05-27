@@ -268,6 +268,7 @@
 #define EXTRACT_SIZE 10
 
 /*
+<<<<<<< HEAD
  * To allow fractional bits to be tracked, the entropy_count field is
  * denominated in units of 1/8th bits.
  *
@@ -278,6 +279,8 @@
 #define ENTROPY_BITS(r) ((r)->entropy_count >> ENTROPY_SHIFT)
 
 /*
+=======
+>>>>>>> ec343cbee7980a994fcb40ba309441f1fefadd35
  * The minimum number of bits of entropy before we wake up a read on
  * /dev/random.  Should be enough to do a significant reseed.
  */
@@ -1408,7 +1411,7 @@ void add_hwgenerator_randomness(const char *buffer, size_t count,
 	 */
 	wait_event_interruptible(random_write_wait, kthread_should_stop() ||
 			ENTROPY_BITS(poolp) <= random_write_wakeup_thresh);
-	mix_pool_bytes(poolp, buffer, count, NULL);
+	mix_pool_bytes(poolp, buffer, count);
 	credit_entropy_bits(poolp, entropy);
 }
 EXPORT_SYMBOL_GPL(add_hwgenerator_randomness);

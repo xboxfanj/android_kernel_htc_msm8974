@@ -26,9 +26,6 @@
 #include <mach/socinfo.h>
 #include <mach/hardware.h>
 #include <mach/msm_iomap.h>
-#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
-#include <mach/htc_footprint.h>
-#endif
 
 #include "pm.h"
 #include "platsmp.h"
@@ -39,8 +36,17 @@
 #define SCSS_CPU1CORE_RESET 0xD80
 #define SCSS_DBG_STATUS_CORE_PWRDUP 0xE64
 
+/*
+ * control for which core is the next to come out of the secondary
+ * boot "holding pen".
+ */
 volatile int pen_release = -1;
 
+/*
+ * Write pen_release in a way that is guaranteed to be visible to all
+ * observers, irrespective of whether they're taking part in coherency
+ * or not.  This is necessary for the hotplug code to work reliably.
+ */
 void __cpuinit write_pen_release(int val)
 {
 	pen_release = val;
@@ -55,10 +61,22 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 {
 	WARN_ON(msm_platform_secondary_init(cpu));
 
+	/*
+	 * if any interrupts are already enabled for the primary
+	 * core (e.g. timer irq), then they will not have been enabled
+	 * for us: do so
+	 */
 	gic_secondary_init(0);
 
+	/*
+	 * let the primary processor know we're out of the
+	 * pen, then head off into the C entry point
+	 */
 	write_pen_release(-1);
 
+	/*
+	 * Synchronise with the boot thread.
+	 */
 	spin_lock(&boot_lock);
 	spin_unlock(&boot_lock);
 }
@@ -191,13 +209,30 @@ static int __cpuinit release_from_pen(unsigned int cpu)
 {
 	unsigned long timeout;
 
-	
+	/* Set preset_lpj to avoid subsequent lpj recalculations */
 	preset_lpj = loops_per_jiffy;
 
+	/*
+	 * set synchronisation state between this boot processor
+	 * and the secondary one
+	 */
 	spin_lock(&boot_lock);
 
+	/*
+	 * The secondary processor is waiting to be released from
+	 * the holding pen - release it, then wait for it to flag
+	 * that it has been released by resetting pen_release.
+	 *
+	 * Note that "pen_release" is the hardware CPU ID, whereas
+	 * "cpu" is Linux's internal ID.
+	 */
 	write_pen_release(cpu_logical_map(cpu));
 
+	/*
+	 * Send the secondary CPU a soft interrupt, thereby causing
+	 * the boot monitor to read the system wide flags register,
+	 * and branch to the address found there.
+	 */
 	gic_raise_softirq(cpumask_of(cpu), 1);
 
 	timeout = jiffies + (1 * HZ);
@@ -209,6 +244,10 @@ static int __cpuinit release_from_pen(unsigned int cpu)
 		udelay(10);
 	}
 
+	/*
+	 * now the secondary core is starting up let it run its
+	 * calibrations, then wait for it to finish
+	 */
 	spin_unlock(&boot_lock);
 
 	return pen_release != -1 ? -ENOSYS : 0;
@@ -269,6 +308,10 @@ int __cpuinit arm_boot_secondary(unsigned int cpu, struct task_struct *idle)
 	return release_from_pen(cpu);
 }
 
+/*
+ * Initialise the CPU possible map early - this describes the CPUs
+ * which may be present or become present in the system.
+ */
 static void __init msm_smp_init_cpus(void)
 {
 	unsigned int i, ncores = get_core_count();
@@ -324,10 +367,6 @@ static void __init msm_platform_smp_prepare_cpus(unsigned int max_cpus)
 		}
 		flags |= cold_boot_flags[map];
 	}
-
-#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
-	init_cpu_debug_counter_for_cold_boot();
-#endif
 
 	if (scm_set_boot_addr(virt_to_phys(msm_secondary_startup), flags))
 		pr_warn("Failed to set CPU boot address\n");

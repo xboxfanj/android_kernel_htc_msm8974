@@ -115,4 +115,4 @@ static inline void outer_sync(void)
 { }
 #endif
 
-#endif	
+#endif	/* __ASM_OUTERCACHE_H */

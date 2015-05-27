@@ -13,6 +13,10 @@
 #ifndef __MSM_RTB_H__
 #define __MSM_RTB_H__
 
+/*
+ * These numbers are used from the kernel command line and sysfs
+ * to control filtering. Remove items from here with extreme caution.
+ */
 enum logk_event_type {
 	LOGK_NONE = 0,
 	LOGK_READL = 1,
@@ -21,12 +25,6 @@ enum logk_event_type {
 	LOGK_HOTPLUG = 4,
 	LOGK_CTXID = 5,
 	LOGK_TIMESTAMP = 6,
-#if defined(CONFIG_HTC_DEBUG_RTB)
-	
-	LOGK_IRQ = 10,
-	LOGK_DIE = 11,
-	LOGK_DEBUG_SCM = 12,
-#endif 
 };
 
 #define LOGTYPE_NOPC 0x80
@@ -36,13 +34,16 @@ struct msm_rtb_platform_data {
 };
 
 #if defined(CONFIG_MSM_RTB)
-#if defined(CONFIG_HTC_DEBUG_RTB)
-void msm_rtb_disable(void);
-#endif 
 
+/*
+ * returns 1 if data was logged, 0 otherwise
+ */
 int uncached_logk_pc(enum logk_event_type log_type, void *caller,
 				void *data);
 
+/*
+ * returns 1 if data was logged, 0 otherwise
+ */
 int uncached_logk(enum logk_event_type log_type, void *data);
 
 #define ETB_WAYPOINT  do { \
@@ -53,14 +54,15 @@ int uncached_logk(enum logk_event_type log_type, void *data);
 			} while (0)
 
 #define BRANCH_TO_NEXT_ISTR  asm volatile("b .+4\n" : : : "memory")
+/*
+ * both the mb and the isb are needed to ensure enough waypoints for
+ * etb tracing
+ */
 #define LOG_BARRIER	do { \
 				mb(); \
 				isb();\
 			 } while (0)
 #else
-#if defined(CONFIG_HTC_DEBUG_RTB)
-static inline void msm_rtb_disable(void) { return; }
-#endif 
 
 static inline int uncached_logk_pc(enum logk_event_type log_type,
 					void *caller,
@@ -71,6 +73,10 @@ static inline int uncached_logk(enum logk_event_type log_type,
 
 #define ETB_WAYPOINT
 #define BRANCH_TO_NEXT_ISTR
+/*
+ * Due to a GCC bug, we need to have a nop here in order to prevent an extra
+ * read from being generated after the write.
+ */
 #define LOG_BARRIER		nop()
 #endif
 #endif

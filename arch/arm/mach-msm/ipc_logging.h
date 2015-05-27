@@ -17,14 +17,23 @@
 
 struct ipc_log_page_header {
 	uint32_t magic;
-	uint32_t nmagic; 
-	uint32_t log_id; 
+	uint32_t nmagic; /* inverse of magic number */
+	uint32_t log_id; /* owner of log */
 	uint32_t page_num;
 	uint16_t read_offset;
 	uint16_t write_offset;
 	struct list_head list;
 };
 
+/**
+ * struct ipc_log_page - Individual log page
+ *
+ * @hdr: Log page header
+ * @data: Log data
+ *
+ * Each log consists of 1 to N log pages.  Data size is adjusted to always fit
+ * the structure into a single kernel page.
+ */
 struct ipc_log_page {
 	struct ipc_log_page_header hdr;
 	char data[PAGE_SIZE - sizeof(struct ipc_log_page_header)];

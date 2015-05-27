@@ -18,6 +18,7 @@
  *
  */
 
+/* This file included from pcm_native.c */
 
 #include <linux/compat.h>
 #include <linux/slab.h>
@@ -75,10 +76,10 @@ static int snd_pcm_ioctl_forward_compat(struct snd_pcm_substream *substream,
 
 struct snd_pcm_hw_params32 {
 	u32 flags;
-	struct snd_mask masks[SNDRV_PCM_HW_PARAM_LAST_MASK - SNDRV_PCM_HW_PARAM_FIRST_MASK + 1]; 
-	struct snd_mask mres[5];	
+	struct snd_mask masks[SNDRV_PCM_HW_PARAM_LAST_MASK - SNDRV_PCM_HW_PARAM_FIRST_MASK + 1]; /* this must be identical */
+	struct snd_mask mres[5];	/* reserved masks */
 	struct snd_interval intervals[SNDRV_PCM_HW_PARAM_LAST_INTERVAL - SNDRV_PCM_HW_PARAM_FIRST_INTERVAL + 1];
-	struct snd_interval ires[9];	
+	struct snd_interval ires[9];	/* reserved intervals */
 	u32 rmask;
 	u32 cmask;
 	u32 info;
@@ -103,6 +104,7 @@ struct snd_pcm_sw_params32 {
 	unsigned char reserved[64];
 };
 
+/* recalcuate the boundary within 32bit */
 static snd_pcm_uframes_t recalculate_boundary(struct snd_pcm_runtime *runtime)
 {
 	snd_pcm_uframes_t boundary;
@@ -133,6 +135,10 @@ static int snd_pcm_ioctl_sw_params_compat(struct snd_pcm_substream *substream,
 	    get_user(params.silence_threshold, &src->silence_threshold) ||
 	    get_user(params.silence_size, &src->silence_size))
 		return -EFAULT;
+	/*
+	 * Check silent_size parameter.  Since we have 64bit boundary,
+	 * silence_size must be compared with the 32bit boundary.
+	 */
 	boundary = recalculate_boundary(substream->runtime);
 	if (boundary && params.silence_size >= boundary)
 		params.silence_size = substream->runtime->boundary;
@@ -184,7 +190,8 @@ struct snd_pcm_status32 {
 	u32 avail_max;
 	u32 overrange;
 	s32 suspended_state;
-	unsigned char reserved[60];
+	struct compat_timespec audio_tstamp;
+	unsigned char reserved[60-sizeof(struct compat_timespec)];
 } __attribute__((packed));
 
 
@@ -199,22 +206,22 @@ static int snd_pcm_status_user_compat(struct snd_pcm_substream *substream,
 		return err;
 
 	if (put_user(status.state, &src->state) ||
-	    put_user(status.trigger_tstamp.tv_sec, &src->trigger_tstamp.tv_sec) ||
-	    put_user(status.trigger_tstamp.tv_nsec, &src->trigger_tstamp.tv_nsec) ||
-	    put_user(status.tstamp.tv_sec, &src->tstamp.tv_sec) ||
-	    put_user(status.tstamp.tv_nsec, &src->tstamp.tv_nsec) ||
+	    compat_put_timespec(&status.trigger_tstamp, &src->trigger_tstamp) ||
+	    compat_put_timespec(&status.tstamp, &src->tstamp) ||
 	    put_user(status.appl_ptr, &src->appl_ptr) ||
 	    put_user(status.hw_ptr, &src->hw_ptr) ||
 	    put_user(status.delay, &src->delay) ||
 	    put_user(status.avail, &src->avail) ||
 	    put_user(status.avail_max, &src->avail_max) ||
 	    put_user(status.overrange, &src->overrange) ||
-	    put_user(status.suspended_state, &src->suspended_state))
+	    put_user(status.suspended_state, &src->suspended_state) ||
+	    compat_put_timespec(&status.audio_tstamp, &src->audio_tstamp))
 		return -EFAULT;
 
 	return err;
 }
 
+/* both for HW_PARAMS and HW_REFINE */
 static int snd_pcm_ioctl_hw_params_compat(struct snd_pcm_substream *substream,
 					  int refine, 
 					  struct snd_pcm_hw_params32 __user *data32)
@@ -226,7 +233,7 @@ static int snd_pcm_ioctl_hw_params_compat(struct snd_pcm_substream *substream,
 	if (! (runtime = substream->runtime))
 		return -ENOTTY;
 
-	
+	/* only fifo_size is different, so just copy all */
 	data = memdup_user(data32, sizeof(*data32));
 	if (IS_ERR(data))
 		return PTR_ERR(data);
@@ -254,6 +261,8 @@ static int snd_pcm_ioctl_hw_params_compat(struct snd_pcm_substream *substream,
 }
 
 
+/*
+ */
 struct snd_xferi32 {
 	s32 result;
 	u32 buf;
@@ -284,19 +293,26 @@ static int snd_pcm_ioctl_xferi_compat(struct snd_pcm_substream *substream,
 		err = snd_pcm_lib_read(substream, compat_ptr(buf), frames);
 	if (err < 0)
 		return err;
-	
+	/* copy the result */
 	if (put_user(err, &data32->result))
 		return -EFAULT;
 	return 0;
 }
 
 
+/* snd_xfern needs remapping of bufs */
 struct snd_xfern32 {
 	s32 result;
-	u32 bufs;  
+	u32 bufs;  /* this is void **; */
 	u32 frames;
 };
 
+/*
+ * xfern ioctl nees to copy (up to) 128 pointers on stack.
+ * although we may pass the copied pointers through f_op->ioctl, but the ioctl
+ * handler there expands again the same 128 pointers on stack, so it is better
+ * to handle the function (calling pcm_readv/writev) directly in this handler.
+ */
 static int snd_pcm_ioctl_xfern_compat(struct snd_pcm_substream *substream,
 				      int dir, struct snd_xfern32 __user *data32)
 {
@@ -348,6 +364,7 @@ struct snd_pcm_mmap_status32 {
 	u32 hw_ptr;
 	struct compat_timespec tstamp;
 	s32 suspended_state;
+	struct compat_timespec audio_tstamp;
 } __attribute__((packed));
 
 struct snd_pcm_mmap_control32 {
@@ -397,7 +414,7 @@ static int snd_pcm_ioctl_sync_ptr_compat(struct snd_pcm_substream *substream,
 	if (! boundary)
 		boundary = 0x7fffffff;
 	snd_pcm_stream_lock_irq(substream);
-	
+	/* FIXME: we should consider the boundary for the sync from app */
 	if (!(sflags & SNDRV_PCM_SYNC_PTR_APPL))
 		control->appl_ptr = scontrol.appl_ptr;
 	else
@@ -410,12 +427,14 @@ static int snd_pcm_ioctl_sync_ptr_compat(struct snd_pcm_substream *substream,
 	sstatus.hw_ptr = status->hw_ptr % boundary;
 	sstatus.tstamp = status->tstamp;
 	sstatus.suspended_state = status->suspended_state;
+	sstatus.audio_tstamp = status->audio_tstamp;
 	snd_pcm_stream_unlock_irq(substream);
 	if (put_user(sstatus.state, &src->s.status.state) ||
 	    put_user(sstatus.hw_ptr, &src->s.status.hw_ptr) ||
-	    put_user(sstatus.tstamp.tv_sec, &src->s.status.tstamp.tv_sec) ||
-	    put_user(sstatus.tstamp.tv_nsec, &src->s.status.tstamp.tv_nsec) ||
+	    compat_put_timespec(&sstatus.tstamp, &src->s.status.tstamp) ||
 	    put_user(sstatus.suspended_state, &src->s.status.suspended_state) ||
+	    compat_put_timespec(&sstatus.audio_tstamp,
+		    &src->s.status.audio_tstamp) ||
 	    put_user(scontrol.appl_ptr, &src->c.control.appl_ptr) ||
 	    put_user(scontrol.avail_min, &src->c.control.avail_min))
 		return -EFAULT;
@@ -424,6 +443,8 @@ static int snd_pcm_ioctl_sync_ptr_compat(struct snd_pcm_substream *substream,
 }
 
 
+/*
+ */
 enum {
 	SNDRV_PCM_IOCTL_HW_REFINE32 = _IOWR('A', 0x10, struct snd_pcm_hw_params32),
 	SNDRV_PCM_IOCTL_HW_PARAMS32 = _IOWR('A', 0x11, struct snd_pcm_hw_params32),
@@ -438,8 +459,26 @@ enum {
 	SNDRV_PCM_IOCTL_WRITEN_FRAMES32 = _IOW('A', 0x52, struct snd_xfern32),
 	SNDRV_PCM_IOCTL_READN_FRAMES32 = _IOR('A', 0x53, struct snd_xfern32),
 	SNDRV_PCM_IOCTL_SYNC_PTR32 = _IOWR('A', 0x23, struct snd_pcm_sync_ptr32),
-
 };
+
+static int snd_compressed_ioctl32(struct snd_pcm_substream *substream,
+				 unsigned int cmd, void __user *arg)
+{
+	struct snd_pcm_runtime *runtime;
+	int err = 0;
+
+	if (PCM_RUNTIME_CHECK(substream))
+		return -ENXIO;
+	runtime = substream->runtime;
+	if (substream->ops->compat_ioctl) {
+		err = substream->ops->compat_ioctl(substream, cmd, arg);
+	} else {
+		err = -ENOIOCTLCMD;
+		pr_err("%s failed cmd = %d\n", __func__, cmd);
+	}
+	pr_debug("%s called with cmd = %d\n", __func__, cmd);
+	return err;
+}
 
 static long snd_pcm_ioctl_compat(struct file *file, unsigned int cmd, unsigned long arg)
 {
@@ -454,6 +493,11 @@ static long snd_pcm_ioctl_compat(struct file *file, unsigned int cmd, unsigned l
 	if (! substream)
 		return -ENOTTY;
 
+	/*
+	 * When PCM is used on 32bit mode, we need to disable
+	 * mmap of PCM status/control records because of the size
+	 * incompatibility.
+	 */
 	pcm_file->no_compat_mmap = 1;
 
 	switch (cmd) {
@@ -503,6 +547,9 @@ static long snd_pcm_ioctl_compat(struct file *file, unsigned int cmd, unsigned l
 		return snd_pcm_ioctl_rewind_compat(substream, argp);
 	case SNDRV_PCM_IOCTL_FORWARD32:
 		return snd_pcm_ioctl_forward_compat(substream, argp);
+	default:
+		if (_IOC_TYPE(cmd) == 'C')
+			return snd_compressed_ioctl32(substream, cmd, argp);
 	}
 
 	return -ENOIOCTLCMD;

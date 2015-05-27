@@ -1,3 +1,8 @@
+/*
+ * sysctl_net_llc.c: sysctl interface to LLC net subsystem.
+ *
+ * Arnaldo Carvalho de Melo <acme@conectiva.com.br>
+ */
 
 #include <linux/mm.h>
 #include <linux/init.h>
@@ -12,28 +17,28 @@ static struct ctl_table llc2_timeout_table[] = {
 	{
 		.procname	= "ack",
 		.data		= &sysctl_llc2_ack_timeout,
-		.maxlen		= sizeof(long),
+		.maxlen		= sizeof(sysctl_llc2_ack_timeout),
 		.mode		= 0644,
 		.proc_handler   = proc_dointvec_jiffies,
 	},
 	{
 		.procname	= "busy",
 		.data		= &sysctl_llc2_busy_timeout,
-		.maxlen		= sizeof(long),
+		.maxlen		= sizeof(sysctl_llc2_busy_timeout),
 		.mode		= 0644,
 		.proc_handler   = proc_dointvec_jiffies,
 	},
 	{
 		.procname	= "p",
 		.data		= &sysctl_llc2_p_timeout,
-		.maxlen		= sizeof(long),
+		.maxlen		= sizeof(sysctl_llc2_p_timeout),
 		.mode		= 0644,
 		.proc_handler   = proc_dointvec_jiffies,
 	},
 	{
 		.procname	= "rej",
 		.data		= &sysctl_llc2_rej_timeout,
-		.maxlen		= sizeof(long),
+		.maxlen		= sizeof(sysctl_llc2_rej_timeout),
 		.mode		= 0644,
 		.proc_handler   = proc_dointvec_jiffies,
 	},

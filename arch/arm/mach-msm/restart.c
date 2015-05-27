@@ -62,6 +62,39 @@ extern int get_partition_num_by_name(char *name);
 #include <asm/kexec.h>
 #endif
 
+#if defined(CONFIG_MACH_EYE_UL)
+#define PN547_I2C_POWEROFF_SEQUENCE_FOR_EYE
+#elif defined(CONFIG_MACH_EYE_WHL)
+#define PN547_I2C_POWEROFF_SEQUENCE_FOR_EYE
+#elif defined(CONFIG_MACH_EYE_WL)
+#define PN547_I2C_POWEROFF_SEQUENCE_FOR_EYE
+#elif defined(CONFIG_MACH_MEC_TL)
+#define PN547_I2C_POWEROFF_SEQUENCE_FOR_MEC
+#elif defined(CONFIG_MACH_MEC_WHL)
+#define PN547_I2C_POWEROFF_SEQUENCE_FOR_MEC
+#elif defined(CONFIG_MACH_MEC_UL)
+#define PN547_I2C_POWEROFF_SEQUENCE_FOR_MEC
+#elif defined(CONFIG_MACH_MEC_DUG)
+#define PN547_I2C_POWEROFF_SEQUENCE_FOR_MEC
+#elif defined(CONFIG_MACH_MEC_DWG)
+#define PN547_I2C_POWEROFF_SEQUENCE_FOR_MEC
+#else
+#endif
+
+
+#if defined(PN547_I2C_POWEROFF_SEQUENCE_FOR_EYE)
+#define SR_I2C_SCL     11
+#define SR_I2C_SDA     10
+extern void force_disable_PM8941_VREG_ID_L22(void);
+#endif
+
+#if defined(PN547_I2C_POWEROFF_SEQUENCE_FOR_MEC)
+#define SR_I2C_SCL     11
+#define SR_I2C_SDA     10
+#define TP_RST         23
+#define SRIO_1V8_EN    95
+extern void force_disable_PMICGPIO34(void);
+#endif
 #define WDT0_RST	0x38
 #define WDT0_EN		0x40
 #define WDT0_BARK_TIME	0x4C
@@ -139,6 +172,8 @@ static void enable_emergency_dload_mode(void)
 		__raw_writel(EMERGENCY_DLOAD_MAGIC3,
 				emergency_dload_mode_addr +
 				(2 * sizeof(unsigned int)));
+
+		qpnp_pon_wd_config(0);
 		mb();
 	}
 }
@@ -321,6 +356,42 @@ static void halt_spmi_pmic_arbiter(void)
 static void __msm_power_off(int lower_pshold)
 {
 	printk(KERN_CRIT "[K] Powering off the SoC\n");
+
+#if defined(PN547_I2C_POWEROFF_SEQUENCE_FOR_EYE)
+	
+	
+	gpio_tlmm_config(GPIO_CFG(SR_I2C_SCL, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_16MA), GPIO_CFG_ENABLE);
+	gpio_set_value(SR_I2C_SCL, 0); 
+	mdelay(1);
+
+	gpio_tlmm_config(GPIO_CFG(SR_I2C_SDA, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_16MA), GPIO_CFG_ENABLE);
+	gpio_set_value(SR_I2C_SDA, 0); 
+	mdelay(1);
+
+	force_disable_PM8941_VREG_ID_L22(); 
+#endif
+
+#if defined(PN547_I2C_POWEROFF_SEQUENCE_FOR_MEC)
+	gpio_tlmm_config(GPIO_CFG(SR_I2C_SCL, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_16MA), GPIO_CFG_ENABLE);
+	gpio_set_value(SR_I2C_SCL, 0);
+ 	msleep(1);
+
+	gpio_tlmm_config(GPIO_CFG(SR_I2C_SDA, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_16MA), GPIO_CFG_ENABLE);
+	gpio_set_value(SR_I2C_SDA, 0);
+	msleep(1);
+
+	gpio_tlmm_config(GPIO_CFG(TP_RST, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_16MA), GPIO_CFG_ENABLE);
+	gpio_set_value(TP_RST, 0);
+	msleep(10);
+
+	force_disable_PMICGPIO34();
+	msleep(10);
+
+	gpio_tlmm_config(GPIO_CFG(SRIO_1V8_EN, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
+	gpio_set_value(SRIO_1V8_EN, 0);
+ 	msleep(100);
+#endif
+
 #ifdef CONFIG_MSM_DLOAD_MODE
 	set_dload_mode(0);
 #endif
@@ -422,6 +493,11 @@ static void msm_restart_prepare(char mode, const char *cmd)
 		unsigned long code;
 		code = simple_strtoul(cmd + 4, NULL, 16) & 0xff;
 		set_restart_to_oem(code, NULL);
+	} else if (!strncmp(cmd, "ftm", 3)) {
+		#define FTM_BASE_FLAG 0xf0
+		unsigned long code;
+		code = (simple_strtoul(cmd + 3, NULL, 16) & 0xff) | FTM_BASE_FLAG;
+		set_restart_to_oem(code, NULL);
 	} else if (!strncmp(cmd, "edl", 3)) {
 		enable_emergency_dload_mode();
 	} else if (!strncmp(cmd, "force-dog-bark", 14)) {
@@ -445,10 +521,6 @@ static void msm_restart_prepare(char mode, const char *cmd)
 
 	if (cmd && !strncmp(cmd, "force-dog-bark", 14)) {
 		pr_info("%s: Force dog bark!\r\n", __func__);
-
-#if defined(CONFIG_HTC_DEBUG_WATCHDOG)
-		msm_watchdog_bark();
-#endif
 
 		mdelay(10000);
 
@@ -483,11 +555,7 @@ void msm_restart(char mode, const char *cmd)
 		
 		msm_disable_wdog_debug();
 		halt_spmi_pmic_arbiter();
-#if defined(CONFIG_ARCH_MSM8226) && defined(CONFIG_HTC_DEBUG_WATCHDOG)
-		msm_watchdog_reset();
-#else
 		__raw_writel(0, MSM_MPM2_PSHOLD_BASE);
-#endif
 	}
 
 	mdelay(10000);

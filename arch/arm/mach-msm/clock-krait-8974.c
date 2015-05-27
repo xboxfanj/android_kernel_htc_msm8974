@@ -32,8 +32,8 @@
 #include "clock-krait.h"
 #include "clock.h"
 
-#ifdef CONFIG_PERFLOCK
-#include <mach/perflock.h>
+#ifdef CONFIG_HTC_POWER_DEBUG
+#include <linux/debugfs.h>
 #endif
 
 DEFINE_FIXED_DIV_CLK(hfpll_src_clk, 1, NULL);
@@ -489,6 +489,52 @@ static void get_krait_bin_format_b(struct platform_device *pdev,
 	devm_iounmap(&pdev->dev, base);
 }
 
+#ifdef CONFIG_HTC_POWER_DEBUG
+int htc_pvs = 0;
+int htc_speed = 0;
+int htc_pvs_ver = 0;
+static void htc_get_pvs_info(int speed, int pvs, int pvs_ver)
+{
+	htc_pvs = pvs;
+	htc_speed = speed;
+	htc_pvs_ver = pvs_ver;
+}
+
+static int pvs_info_show(struct seq_file *m, void *unused)
+{
+	seq_printf(m, "pvs%d-speed%d-bin-v%d\n", htc_pvs, htc_speed, htc_pvs_ver);
+	return 0;
+}
+
+static int pvs_info_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pvs_info_show, inode->i_private);
+}
+
+static const struct file_operations pvs_info_fops = {
+        .open = pvs_info_open,
+        .read = seq_read,
+        .llseek = seq_lseek,
+        .release = seq_release,
+};
+
+static int htc_pvs_debugfs_init(void)
+{
+	static struct dentry *debugfs_pvs_base;
+
+	debugfs_pvs_base = debugfs_create_dir("htc_pvs", NULL);
+
+	if (!debugfs_pvs_base)
+		return -ENOMEM;
+
+	if (!debugfs_create_file("pvs_info", S_IRUGO, debugfs_pvs_base,
+                                NULL, &pvs_info_fops))
+		return -ENOMEM;
+
+	return 0;
+}
+#endif
+
 static int parse_tbl(struct device *dev, char *prop, int num_cols,
 		u32 **col1, u32 **col2, u32 **col3)
 {
@@ -776,9 +822,13 @@ static int clock_krait_8974_driver_probe(struct platform_device *pdev)
 	}
 
 	get_krait_bin_format_b(pdev, &speed, &pvs, &pvs_ver);
-	snprintf(table_name, ARRAY_SIZE(table_name),
+	snprintf(table_name, sizeof(table_name) - 1,
 			"qcom,speed%d-pvs%d-bin-v%d", speed, pvs, pvs_ver);
 
+#ifdef CONFIG_HTC_POWER_DEBUG
+	htc_pvs_debugfs_init();
+	htc_get_pvs_info(speed, pvs, pvs_ver);
+#endif
 	rows = parse_tbl(dev, table_name, 3,
 			(u32 **) &freq, (u32 **) &uv, (u32 **) &ua);
 	if (rows < 0) {
@@ -867,39 +917,6 @@ static int clock_krait_8974_driver_probe(struct platform_device *pdev)
 
 	return 0;
 }
-
-#ifdef CONFIG_PERFLOCK
-unsigned msm8974_perf_acpu_table[] = {
-        652800000,  
-        883200000,  
-        1036800000, 
-        1190400000, 
-        1958400000, 
-};
-
-static struct perflock_data msm8974_floor_data = {
-        .perf_acpu_table = msm8974_perf_acpu_table,
-        .table_size = ARRAY_SIZE(msm8974_perf_acpu_table),
-};
-
-static struct perflock_data msm8974_cpufreq_ceiling_data = {
-        .perf_acpu_table = msm8974_perf_acpu_table,
-        .table_size = ARRAY_SIZE(msm8974_perf_acpu_table),
-};
-
-static struct perflock_pdata perflock_pdata = {
-        .perf_floor = &msm8974_floor_data,
-        .perf_ceiling = &msm8974_cpufreq_ceiling_data,
-};
-
-struct platform_device msm8974_device_perf_lock = {
-        .name = "perf_lock",
-        .id = -1,
-        .dev = {
-        .platform_data = &perflock_pdata,
-    },
-};
-#endif
 
 static struct of_device_id match_table[] = {
 	{ .compatible = "qcom,clock-krait-8974" },

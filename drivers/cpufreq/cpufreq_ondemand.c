@@ -765,8 +765,10 @@ static ssize_t store_two_phase_freq(struct kobject *a, struct attribute *b,
 	if (policy) {
 		if (input < policy->cpuinfo.min_freq || input > policy->cpuinfo.max_freq)
 			return -EINVAL;
-		dbs_tuners_ins.two_phase_freq = input;
-		reset_freq_map_table(policy);
+		if (dbs_tuners_ins.two_phase_freq != input) {
+			dbs_tuners_ins.two_phase_freq = input;
+			reset_freq_map_table(policy);
+		}
 	}
 
 	return count;
@@ -909,7 +911,7 @@ static void reset_freq_map_table(struct cpufreq_policy *policy)
 	unsigned int real_freq;
 	int index;
 
-	if (!tbl)
+	if (!tbl || !tblmap[0])
 		return;
 
 	

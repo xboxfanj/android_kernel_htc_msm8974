@@ -24,5 +24,4 @@
 	  ".endif; "				\
 	".endif\n\t"
 
-
-#endif 
+#endif /* __ASM_ARM_COMPILER_H */

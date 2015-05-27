@@ -22,7 +22,6 @@
 #include <mach/msm-krait-l2-accessors.h>
 #include <mach/msm_iomap.h>
 #include <mach/socinfo.h>
-#include <mach/htc_debug_tools.h>
 #include <asm/cputype.h>
 #include "acpuclock.h"
 #include "clock-krait.h"
@@ -66,21 +65,13 @@
 #ifdef CONFIG_MSM_L1_ERR_PANIC
 #define ERP_L1_ERR(a) panic(a)
 #else
-#if defined(CONFIG_HTC_DEBUG_CACHE)
-#define ERP_L1_ERR(a) WARN(1, a)
-#else
 #define ERP_L1_ERR(a) do { } while (0)
-#endif
 #endif
 
 #ifdef CONFIG_MSM_L1_RECOV_ERR_PANIC
 #define ERP_L1_RECOV_ERR(a) panic(a)
 #else
-#if defined(CONFIG_HTC_DEBUG_CACHE)
-#define ERP_L1_RECOV_ERR(a) WARN(1, a)
-#else
 #define ERP_L1_RECOV_ERR(a) do { } while (0)
-#endif
 #endif
 
 #ifdef CONFIG_MSM_L2_ERP_PORT_PANIC
@@ -92,11 +83,7 @@
 #ifdef CONFIG_MSM_L2_ERP_1BIT_PANIC
 #define ERP_1BIT_ERR(a) panic(a)
 #else
-#if defined(CONFIG_HTC_DEBUG_CACHE)
-#define ERP_1BIT_ERR(a) WARN(1, a)
-#else
 #define ERP_1BIT_ERR(a) do { } while (0)
-#endif
 #endif
 
 #ifdef CONFIG_MSM_L2_ERP_PRINT_ACCESS_ERRORS
@@ -108,20 +95,13 @@
 #ifdef CONFIG_MSM_L2_ERP_2BIT_PANIC
 #define ERP_2BIT_ERR(a) panic(a)
 #else
-#if defined(CONFIG_HTC_DEBUG_CACHE)
-#define ERP_2BIT_ERR(a) WARN(1, a)
-#else
 #define ERP_2BIT_ERR(a) do { } while (0)
-#endif
 #endif
 
 #define MODULE_NAME "msm_cache_erp"
 
 #define ERP_LOG_MAGIC_ADDR	0x6A4
 #define ERP_LOG_MAGIC		0x11C39893
-
-#define CONTINUOUS_L2_ERROR_GAP 15
-#define MAX_CONTINUOUS_L2_ERROR 20
 
 struct msm_l1_err_stats {
 	unsigned int dctpe;
@@ -142,8 +122,6 @@ struct msm_l2_err_stats {
 	unsigned int dsedb;
 	unsigned int mse;
 	unsigned int mplxrexnok;
-	unsigned int continue_tsesb_count;
-	unsigned long last_tsesb_time;
 };
 
 struct msm_erp_dump_region {
@@ -409,7 +387,6 @@ static irqreturn_t msm_l2_erp_irq(int irq, void *dev_id)
 	int port_error = 0;
 	int unrecoverable = 0;
 	int print_alert;
-	unsigned long tsesb_time;
 
 	l2esr = get_l2_indirect_reg(L2ESR_IND_ADDR);
 	l2esynr0 = get_l2_indirect_reg(L2ESYNR0_IND_ADDR);
@@ -457,16 +434,6 @@ static irqreturn_t msm_l2_erp_irq(int irq, void *dev_id)
 		pr_alert("L2 tag soft error, single-bit\n");
 		soft_error++;
 		msm_l2_erp_stats.tsesb++;
-		tsesb_time = htc_debug_get_sched_clock_ms();
-		if((tsesb_time > msm_l2_erp_stats.last_tsesb_time)
-			&& ((tsesb_time - msm_l2_erp_stats.last_tsesb_time) < CONTINUOUS_L2_ERROR_GAP)
-			&& (((l2esr >> L2ESR_CPU_SHIFT) & L2ESR_CPU_MASK) == 0x1)) {
-			if(msm_l2_erp_stats.continue_tsesb_count++ > MAX_CONTINUOUS_L2_ERROR)
-				panic("Continuous L2 single-bit error detected");
-		} else {
-			msm_l2_erp_stats.continue_tsesb_count = 0;
-		}
-		msm_l2_erp_stats.last_tsesb_time = tsesb_time;
 	}
 
 	if (l2esr & L2ESR_TSEDB) {
