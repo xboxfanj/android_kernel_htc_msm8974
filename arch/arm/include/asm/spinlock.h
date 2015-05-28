@@ -20,18 +20,25 @@
 
 #ifdef CONFIG_THUMB2_KERNEL
 #define SEV		ALT_SMP("sev.w", "nop.w")
-/*
- * Both instructions given to the ALT_SMP macro need to be the same size, to
- * allow the SMP_ON_UP fixups to function correctly. Hence the explicit encoding
- * specifications.
+ /*
+ * For Thumb-2, special care is needed to ensure that the conditional WFE
+ * instruction really does assemble to exactly 4 bytes (as required by
+ * the SMP_ON_UP fixup code).   By itself "wfene" might cause the
+ * assembler to insert a extra (16-bit) IT instruction, depending on the
+ * presence or absence of neighbouring conditional instructions.
+ *
+ * To avoid this unpredictableness, an approprite IT is inserted explicitly:
+ * the assembler won't change IT instructions which are explicitly present
+ * in the input.
  */
-#define WFE()		ALT_SMP(		\
-	"wfe.w",				\
+#define WFE(cond)		ALT_SMP(		\
+	"it " cond "\n\t"			\
+	"wfe" cond ".n",			\
 	"nop.w"					\
 )
 #else
 #define SEV		ALT_SMP("sev", "nop")
-#define WFE()		ALT_SMP("wfe", "nop")
+#define WFE(cond)		ALT_SMP("wfe" cond, "nop")
 #endif
 
 static inline void dsb_sev(void)
@@ -76,9 +83,7 @@ static inline void arch_spin_lock(arch_spinlock_t *lock)
 	__asm__ __volatile__(
 "1:	ldrex	%[tmp], [%[lock]]\n"
 "	teq	%[tmp], #0\n"
-"	beq	2f\n"
-	WFE()
-"2:\n"
+	WFE("ne")
 "	strexeq	%[tmp], %[bit0], [%[lock]]\n"
 "	teqeq	%[tmp], #0\n"
 "	bne	1b"
@@ -160,9 +165,7 @@ static inline void arch_spin_lock(arch_spinlock_t *lock)
 "	uxth	%[ticket], %[ticket]\n"
 "2:\n"
 #ifdef CONFIG_CPU_32v6K
-"	beq	3f\n"
-	WFE()
-"3:\n"
+"	wfene\n"
 #endif
 "	ldr	%[tmp], [%[lockaddr]]\n"
 "	cmp	%[ticket], %[tmp], lsr #16\n"
@@ -222,10 +225,7 @@ static inline void arch_spin_unlock_wait(arch_spinlock_t *lock)
 	__asm__ __volatile__(
 #ifdef CONFIG_CPU_32v6K
 "	cmpne	%[lockaddr], %[lockaddr]\n"
-"1:\n"
-"	beq	2f\n"
-	WFE()
-"2:\n"
+"1:	wfene\n"
 #else
 "1:\n"
 #endif
@@ -267,9 +267,7 @@ static inline void arch_write_lock(arch_rwlock_t *rw)
 	__asm__ __volatile__(
 "1:	ldrex	%[tmp], [%[lock]]\n"
 "	teq	%[tmp], #0\n"
-"	beq	2f\n"
-	WFE()
-"2:\n"
+	WFE("ne")
 "	strexeq	%[tmp], %[bit31], [%[lock]]\n"
 "	teq	%[tmp], #0\n"
 "	bne	1b"
@@ -336,9 +334,7 @@ static inline void arch_read_lock(arch_rwlock_t *rw)
 "1:	ldrex	%[tmp], [%[lock]]\n"
 "	adds	%[tmp], %[tmp], #1\n"
 "	strexpl	%[tmp2], %[tmp], [%[lock]]\n"
-"	bpl	2f\n"
-	WFE()
-"2:\n"
+	WFE("mi")
 "	rsbpls	%[tmp], %[tmp2], #0\n"
 "	bmi	1b"
 	: [tmp] "=&r" (tmp), [tmp2] "=&r" (tmp2)
