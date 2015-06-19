@@ -1726,7 +1726,7 @@ EXPORT_SYMBOL(cpufreq_get_policy);
 static int __cpufreq_set_policy(struct cpufreq_policy *data,
 				struct cpufreq_policy *policy)
 {
-	int ret = 0, failed = 1;
+	int ret = 0;
 	unsigned int pmin = policy->min;
 	unsigned int pmax = policy->max;
 	unsigned int qmin = pm_qos_request(PM_QOS_CPU_FREQ_MIN);
