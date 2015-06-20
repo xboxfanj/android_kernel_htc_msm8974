@@ -138,7 +138,6 @@ struct msm_compr_audio {
 	int32_t partial_drain_delay;
 
 	uint16_t session_id;
-	uint16_t bits_per_sample;
 	uint64_t lasttimestamp;
 	int32_t stream_end;
 
