@@ -32,14 +32,10 @@
 #include <sound/soc-dpcm.h>
 #include <sound/initval.h>
 
-//htc audio ++
 #undef pr_info
 #undef pr_err
 #define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
 #define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
-//htc audio --
-
-#define MAX_BE_USERS	8	/* adjust if too low for everday use */
 
 /* ASoC no host IO hardware.
  * TODO: fine tune these values for all host less transfers.
@@ -82,7 +78,6 @@ int snd_soc_dpcm_can_be_free_stop(struct snd_soc_pcm_runtime *fe,
 }
 EXPORT_SYMBOL_GPL(snd_soc_dpcm_can_be_free_stop);
 
-//htc audio ++
 static void dump_fe_state_by_be(struct snd_soc_pcm_runtime *fe,
 		struct snd_soc_pcm_runtime *be, int stream)
 {
@@ -99,7 +94,6 @@ static void dump_fe_state_by_be(struct snd_soc_pcm_runtime *fe,
 			dpcm_params->fe->dpcm[stream].state);
 	}
 }
-//htc audio --
 /*
  * We can only change hw params a BE DAI if any of it's FE are not prepared,
  * running, paused or suspended for the specified stream direction.
@@ -1189,8 +1183,9 @@ int dpcm_be_dai_startup(struct snd_soc_pcm_runtime *fe, int stream)
 		if (!snd_soc_dpcm_be_can_update(fe, be, stream))
 			continue;
 
+		
 		/* first time the dpcm_params is open ? */
-		if (be->dpcm[stream].users == MAX_BE_USERS)
+		if (be->dpcm[stream].users == DPCM_MAX_BE_USERS)
 			dev_err(be->dev, "too many users %s at open - state %d\n",
 				stream ? "capture" : "playback", be->dpcm[stream].state);
 
@@ -1401,6 +1396,81 @@ static int soc_dpcm_fe_dai_shutdown(struct snd_pcm_substream *substream)
 	return 0;
 }
 
+int dpcm_fe_dai_hw_params_be(struct snd_soc_pcm_runtime *fe,
+	struct snd_soc_pcm_runtime *be,
+	struct snd_pcm_hw_params *params, int stream)
+{
+	int ret;
+	struct snd_soc_dpcm_params *dpcm;
+	struct snd_pcm_substream *be_substream =
+		snd_soc_dpcm_get_substream(be, stream);
+
+	/* is this op for this BE ? */
+	if (!snd_soc_dpcm_be_can_update(fe, be, stream))
+		return 0;
+
+	/* only allow hw_params() if no connected FEs are running */
+	if (!snd_soc_dpcm_can_be_params(fe, be, stream))
+		return 0;
+
+	if ((be->dpcm[stream].state != SND_SOC_DPCM_STATE_OPEN) &&
+			(be->dpcm[stream].state !=
+				SND_SOC_DPCM_STATE_HW_PARAMS) &&
+			(be->dpcm[stream].state != SND_SOC_DPCM_STATE_HW_FREE))
+		return 0;
+
+	dev_dbg(be->dev, "ASoC: hw_params BE %s\n",
+			fe->dai_link->name);
+
+	/* perform any hw_params fixups */
+	if (be->dai_link->be_hw_params_fixup) {
+		ret = be->dai_link->be_hw_params_fixup(be,
+				params);
+		if (ret < 0) {
+			dev_err(be->dev,
+					"ASoC: hw_params BE fixup failed %d\n",
+					ret);
+			goto unwind;
+		}
+	}
+
+	ret = soc_pcm_hw_params(be_substream, params);
+	if (ret < 0) {
+		dev_err(be->dev, "ASoC: hw_params BE failed %d\n", ret);
+		goto unwind;
+	}
+
+	be->dpcm[stream].state = SND_SOC_DPCM_STATE_HW_PARAMS;
+	return 0;
+
+unwind:
+	/* disable any enabled and non active backends */
+	list_for_each_entry(dpcm, &fe->dpcm[stream].be_clients, list_be) {
+		struct snd_soc_pcm_runtime *be = dpcm->be;
+		struct snd_pcm_substream *be_substream =
+			snd_soc_dpcm_get_substream(be, stream);
+
+		if (!snd_soc_dpcm_be_can_update(fe, be, stream))
+			continue;
+
+		/* only allow hw_free() if no connected FEs are running */
+		if (!snd_soc_dpcm_can_be_free_stop(fe, be, stream))
+			continue;
+
+		if ((be->dpcm[stream].state != SND_SOC_DPCM_STATE_OPEN) &&
+			(be->dpcm[stream].state
+				!= SND_SOC_DPCM_STATE_HW_PARAMS) &&
+			(be->dpcm[stream].state
+				!= SND_SOC_DPCM_STATE_HW_FREE) &&
+			(be->dpcm[stream].state != SND_SOC_DPCM_STATE_STOP))
+			continue;
+
+		soc_pcm_hw_free(be_substream);
+	}
+
+	return ret;
+}
+
 int dpcm_be_dai_hw_params(struct snd_soc_pcm_runtime *fe, int stream)
 {
 	struct snd_soc_dpcm_params *dpcm_params;
@@ -1447,9 +1517,7 @@ int dpcm_be_dai_hw_params(struct snd_soc_pcm_runtime *fe, int stream)
 		ret = soc_pcm_hw_params(be_substream, &dpcm_params->hw_params);
 		if (ret < 0) {
 			dev_err(dpcm_params->be->dev, "dpcm: hw_params BE failed %d\n", ret);
-//htc audio ++
 			dump_fe_state_by_be(fe, be, stream);
-//htc audio --
 			goto unwind;
 		}
 
@@ -1703,6 +1771,35 @@ out:
 	return ret;
 }
 
+int dpcm_fe_dai_prepare_be(struct snd_soc_pcm_runtime *fe,
+		struct snd_soc_pcm_runtime *be, int stream)
+{
+	struct snd_pcm_substream *be_substream =
+		snd_soc_dpcm_get_substream(be, stream);
+	int ret = 0;
+
+	/* is this op for this BE ? */
+	if (!snd_soc_dpcm_be_can_update(fe, be, stream))
+		return 0;
+
+	if ((be->dpcm[stream].state != SND_SOC_DPCM_STATE_HW_PARAMS) &&
+			(be->dpcm[stream].state != SND_SOC_DPCM_STATE_STOP))
+		return 0;
+
+	dev_dbg(be->dev, "ASoC: prepare BE %s\n",
+			fe->dai_link->name);
+
+	ret = soc_pcm_prepare(be_substream);
+	if (ret < 0) {
+		dev_err(be->dev, "ASoC: backend prepare failed %d\n",
+				ret);
+		return ret;
+	}
+
+	be->dpcm[stream].state = SND_SOC_DPCM_STATE_PREPARE;
+	return ret;
+}
+
 int dpcm_be_dai_prepare(struct snd_soc_pcm_runtime *fe, int stream)
 {
 	struct snd_soc_dpcm_params *dpcm_params;
@@ -1737,14 +1834,91 @@ int dpcm_be_dai_prepare(struct snd_soc_pcm_runtime *fe, int stream)
 	return ret;
 }
 
+static void dpcm_be_async_prepare(void *data, async_cookie_t cookie)
+{
+	struct snd_soc_dpcm_params *dpcm = data;
+	struct snd_soc_pcm_runtime *be = dpcm->be;
+	int stream = dpcm->stream;
+	struct snd_pcm_substream *be_substream =
+		snd_soc_dpcm_get_substream(be, stream);
+	int ret;
+
+	dev_dbg(be->dev, "%s ASoC: prepare BE %s\n", __func__,
+					dpcm->fe->dai_link->name);
+	ret = soc_pcm_prepare(be_substream);
+	if (ret < 0) {
+		be->err_ops = ret;
+		dev_err(be->dev, "ASoC: backend prepare failed %d\n",
+				ret);
+		return;
+	}
+	be->dpcm[stream].state = SND_SOC_DPCM_STATE_PREPARE;
+}
+
+void dpcm_be_dai_prepare_async(struct snd_soc_pcm_runtime *fe, int stream,
+					    struct async_domain *domain)
+{
+	struct snd_soc_dpcm_params *dpcm;
+	struct snd_soc_dpcm_params *dpcm_async[DPCM_MAX_BE_USERS];
+	int i = 0, j;
+
+	list_for_each_entry(dpcm, &fe->dpcm[stream].be_clients, list_be) {
+		struct snd_soc_pcm_runtime *be = dpcm->be;
+
+		be->err_ops = 0;
+		/* is this op for this BE ? */
+		if (!snd_soc_dpcm_be_can_update(fe, be, stream))
+			continue;
+
+		if ((be->dpcm[stream].state != SND_SOC_DPCM_STATE_HW_PARAMS) &&
+			(be->dpcm[stream].state != SND_SOC_DPCM_STATE_STOP))
+			continue;
+
+		/* does this BE support async op ?*/
+		if ((fe->dai_link->async_ops & ASYNC_DPCM_SND_SOC_PREPARE) &&
+		    (be->dai_link->async_ops & ASYNC_DPCM_SND_SOC_PREPARE)) {
+			dpcm->stream = stream;
+			async_schedule_domain(dpcm_be_async_prepare,
+							    dpcm, domain);
+		} else {
+			dpcm_async[i++] = dpcm;
+		}
+	}
+
+	for (j = 0; j < i; j++) {
+		struct snd_soc_dpcm_params *dpcm = dpcm_async[j];
+		struct snd_soc_pcm_runtime *be = dpcm->be;
+		struct snd_pcm_substream *be_substream =
+			snd_soc_dpcm_get_substream(be, stream);
+		int ret;
+
+		dev_dbg(be->dev, "ASoC: prepare BE %s\n",
+				dpcm->fe->dai_link->name);
+
+		ret = soc_pcm_prepare(be_substream);
+		if (ret < 0) {
+			dev_err(be->dev, "ASoC: backend prepare failed %d\n",
+					ret);
+			be->err_ops = ret;
+			return;
+		}
+
+		be->dpcm[stream].state = SND_SOC_DPCM_STATE_PREPARE;
+	}
+}
+
 int soc_dpcm_fe_dai_prepare(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *fe = substream->private_data;
+	struct snd_soc_dpcm_params *dpcm;
 	int stream = substream->stream, ret = 0;
+	ASYNC_DOMAIN_EXCLUSIVE(async_domain);
 
 	mutex_lock(&fe->card->dpcm_mutex);
 
-	dev_dbg(fe->dev, "dpcm: prepare FE %s\n", fe->dai_link->name);
+	fe->err_ops = 0;
+
+	dev_dbg(fe->dev, "ASoC: prepare FE %s\n", fe->dai_link->name);
 
 	fe->dpcm[stream].runtime_update = SND_SOC_DPCM_UPDATE_FE;
 
@@ -1762,14 +1936,45 @@ int soc_dpcm_fe_dai_prepare(struct snd_pcm_substream *substream)
 						fe->dai_link->name);
 		goto out;
 	}
-
-	/* call prepare on the frontend */
-	if (!fe->fe_compr) {
+	
+	if (!(fe->dai_link->async_ops & ASYNC_DPCM_SND_SOC_PREPARE)) {
+		ret = dpcm_be_dai_prepare(fe, substream->stream);
+		if (ret < 0)
+			goto out;
+		/* call prepare on the frontend */
 		ret = soc_pcm_prepare(substream);
 		if (ret < 0) {
 			dev_err(fe->dev, "ASoC: prepare FE %s failed\n",
-							fe->dai_link->name);
+					fe->dai_link->name);
 			goto out;
+		}
+	} else {
+		dpcm_be_dai_prepare_async(fe, substream->stream,
+							&async_domain);
+
+		/* call prepare on the frontend */
+		ret = soc_pcm_prepare(substream);
+		if (ret < 0) {
+			fe->err_ops = ret;
+			dev_err(fe->dev, "ASoC: prepare FE %s failed\n",
+					fe->dai_link->name);
+		}
+		async_synchronize_full_domain(&async_domain);
+
+		/* check if any BE failed */
+		list_for_each_entry(dpcm, &fe->dpcm[stream].be_clients,
+							    list_be) {
+			struct snd_soc_pcm_runtime *be = dpcm->be;
+			if (be->err_ops < 0) {
+				ret = be->err_ops;
+				goto out;
+			}
+		}
+
+		/* check if FE failed */
+		if (fe->err_ops < 0) {
+			ret = fe->err_ops;
+ 			goto out;
 		}
 	}
 
@@ -2487,10 +2692,8 @@ int soc_dpcm_fe_dai_open(struct snd_pcm_substream *fe_substream)
 	if ((ret = dpcm_path_get(fe, stream, &list)) <= 0) {
 		dev_warn(fe->dev, "asoc: %s no valid %s route from source to sink\n",
 			fe->dai_link->name, stream ? "capture" : "playback");
-//htc audio ++
 		if(ret == 0 && list)
 			dpcm_path_put(&list);
-//htc audio --
 		mutex_unlock(&fe->card->dpcm_mutex);
 		return -EINVAL;
 	}

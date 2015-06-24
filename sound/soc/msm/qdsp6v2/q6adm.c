@@ -36,6 +36,7 @@
 #define INVALID_COPP_ID 0xFF
 #define ADM_GET_PARAMETER_LENGTH  (4096 - APR_HDR_SIZE - 2 * sizeof(uint32_t))
 
+#define ULL_SUPPORTED_BITS_PER_SAMPLE 16
 #define ULL_SUPPORTED_SAMPLE_RATE 48000
 #define ULL_MAX_SUPPORTED_CHANNEL 2
 
@@ -508,7 +509,7 @@ int adm_get_params(int port_id, uint32_t module_id, uint32_t param_id,
 	}
 	if ((params_data) && (ARRAY_SIZE(adm_get_parameters) >=
 		(1+adm_get_parameters[0])) &&
-		(params_length/sizeof(uint32_t) >=
+		(params_length/sizeof(int) >=
 		adm_get_parameters[0])) {
 		for (i = 0; i < adm_get_parameters[0]; i++)
 			params_data[i] = adm_get_parameters[1+i];
@@ -712,23 +713,20 @@ static int32_t adm_callback(struct apr_client_data *data, void *priv)
 					data->payload_size))
 				break;
 
-			
-			
+			/* payload[3] is the param size, check if payload */
+			/* is big enough and has a valid param size */
 			if ((payload[0] == 0) && (data->payload_size >
 				(4 * sizeof(*payload))) &&
-				(data->payload_size - 4 >=
+				(data->payload_size/sizeof(*payload)-4 >=
 				payload[3]) &&
 				(ARRAY_SIZE(adm_get_parameters)-1 >=
 				payload[3])) {
-				adm_get_parameters[0] = payload[3] /
-							sizeof(uint32_t);
+				adm_get_parameters[0] = payload[3];
 				pr_debug("%s: GET_PP PARAM:received parameter length: 0x%x\n",
 					__func__, adm_get_parameters[0]);
-				
-				for (i = 0; i < payload[3] /
-						sizeof(uint32_t); i++)
-					adm_get_parameters[1+i] =
-							payload[4+i];
+				/* storing param size then params */
+				for (i = 0; i < payload[3]; i++)
+					adm_get_parameters[1+i] = payload[4+i];
 			} else {
 				adm_get_parameters[0] = -1;
 				pr_err("%s: GET_PP_PARAMS failed, setting size to %d\n",
@@ -1281,13 +1279,12 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology,
 		if (perf_mode == ULTRA_LOW_LATENCY_PCM_MODE) {
 			open.topology_id = NULL_COPP_TOPOLOGY;
 			rate = ULL_SUPPORTED_SAMPLE_RATE;
+			open.bit_width = ULL_SUPPORTED_BITS_PER_SAMPLE;
 			if(channel_mode > ULL_MAX_SUPPORTED_CHANNEL)
 				channel_mode = ULL_MAX_SUPPORTED_CHANNEL;
-
 #ifdef CONFIG_HD_AUDIO
 			bits_per_sample = ULL_SUPPORTED_BITS_PER_SAMPLE;
 #endif
-
 		} else if (perf_mode == LOW_LATENCY_PCM_MODE) {
 			if ((open.topology_id == DOLBY_ADM_COPP_TOPOLOGY_ID) ||
 			    (open.topology_id == SRS_TRUMEDIA_TOPOLOGY_ID))
